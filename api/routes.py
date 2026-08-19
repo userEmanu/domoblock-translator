@@ -1,6 +1,6 @@
 import os
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash, jsonify
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from api.models import db, User, Settings, AutoRule
 from api.services import TranslatorService, send_login_alert
@@ -74,7 +74,7 @@ def dashboard():
     if translator:
         usage = translator.get_deepl_usage()
 
-    # Calcular hora de Colombia para mostrar en UI
+    # SOLUCIÓN DEL ERROR 500: Se agregó timedelta a los imports para calcular la hora
     utc_now = datetime.utcnow()
     colombia_time = utc_now - timedelta(hours=5)
 
@@ -116,7 +116,7 @@ def manual_translate():
     
     target_type = request.form.get('target_type')
     target_id = request.form.get('target_id')
-    item_id = request.form.get('item_id') # Solo para colecciones
+    item_id = request.form.get('item_id')
 
     processed = 0
 
@@ -172,11 +172,9 @@ def auto():
         frequency_days = int(request.form.get('frequency_days', 3))
         modified_within_days = int(request.form.get('modified_within_days', 5))
         
-        # Generar un nombre automático si selecciona "Todos"
         if target_id == 'all':
             target_name = f"Todas las {'Páginas' if target_type == 'page' else 'Colecciones CMS'}"
         else:
-            # Extraer el nombre real de Webflow basado en el ID
             target_name = "Recurso Específico"
             if target_type == 'page':
                 pages = translator.get_pages(config.site_id)
@@ -290,7 +288,6 @@ def webflow_webhook():
     collection_id = data.get('_cid')
     
     if collection_id and item_id:
-        # Busca si la coleccion especifica o "todas" tienen regla webhook
         rule = AutoRule.query.filter_by(target_type='collection', trigger_type='webhook', is_active=True).filter((AutoRule.target_id == collection_id) | (AutoRule.target_id == 'all')).first()
         if rule:
             full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
@@ -300,8 +297,6 @@ def webflow_webhook():
 
     elif data.get('siteId') == config.site_id:
         page_id = data.get('pageId')
-        
-        # Revisar todas las reglas de paginas webhooks activas (especificas o all)
         page_rules = AutoRule.query.filter_by(target_type='page', trigger_type='webhook', is_active=True).all()
         processed = 0
         
@@ -311,7 +306,6 @@ def webflow_webhook():
                     if translator.process_page_dom(page_id, es_loc['id'], en_loc['id']):
                         processed += 1
         else:
-            # Site Publish genérico
             for rule in page_rules:
                 if rule.target_id == 'all':
                     for page in translator.get_pages(config.site_id):
