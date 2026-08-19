@@ -25,16 +25,16 @@ class Settings(db.Model):
 class TranslationRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.String(100), index=True) 
-    item_type = db.Column(db.String(50)) # 'page' o 'collection'
+    item_type = db.Column(db.String(50)) 
     translation_count = db.Column(db.Integer, default=0)
     last_translated = db.Column(db.DateTime, default=datetime.utcnow)
     content_hash = db.Column(db.String(256))
 
 class AutoRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    target_id = db.Column(db.String(100)) # 'all' o ID especifico
-    target_type = db.Column(db.String(50)) # 'page' o 'collection'
-    trigger_type = db.Column(db.String(50)) # 'cron' o 'webhook'
+    target_id = db.Column(db.String(100)) 
+    target_type = db.Column(db.String(50)) 
+    trigger_type = db.Column(db.String(50)) 
     frequency_days = db.Column(db.Integer, default=3)
     modified_within_days = db.Column(db.Integer, default=5)
     is_active = db.Column(db.Boolean, default=True)
