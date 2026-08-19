@@ -11,7 +11,7 @@ from api.models import db, TranslationRecord
 def send_login_alert(target_email):
     sender = "supportitgv@gmail.com"
     msg = MIMEText(f"Se ha detectado un nuevo inicio de sesión exitoso en tu panel administrativo de Webflow-DeepL a las {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
-    msg['Subject'] = 'Alerta de Seguridad: Nuevo Ingreso (Domoblock Translator)'
+    msg['Subject'] = 'Alerta de Seguridad: Nuevo Ingreso'
     msg['From'] = sender
     msg['To'] = target_email
 
@@ -63,7 +63,6 @@ class TranslatorService:
                 return False 
             if item_type == 'page' and record.translation_count >= 3:
                 return False 
-            
             record.content_hash = current_hash
             record.translation_count += 1
             record.last_translated = datetime.utcnow()
@@ -77,9 +76,13 @@ class TranslatorService:
     def translate_text(self, text, is_html=False):
         if not text or not str(text).strip(): return text
         try:
-            res = self.translator.translate_text(text, source_lang="ES", target_lang="EN-US", tag_handling="html" if is_html else None)
-            return html.unescape(res.text)
-        except Exception:
+            if is_html:
+                res = self.translator.translate_text(text, source_lang="ES", target_lang="EN-US", tag_handling="html")
+            else:
+                res = self.translator.translate_text(text, source_lang="ES", target_lang="EN-US")
+            return res.text
+        except Exception as e:
+            print(f"Error DeepL: {e}")
             return text
 
     # --- CMS API ---
@@ -103,7 +106,9 @@ class TranslatorService:
         for key, value in item['fieldData'].items():
             if isinstance(value, str) and key not in ['slug', 'color', 'name']:
                 es_html = "<" in value and ">" in value
-                translated_fields[key] = self.translate_text(value, is_html=es_html)
+                tr_val = self.translate_text(value, is_html=es_html)
+                tr_val = html.unescape(tr_val)
+                translated_fields[key] = tr_val
             else:
                 translated_fields[key] = value
 
@@ -123,9 +128,7 @@ class TranslatorService:
     def process_page_dom(self, page_id, es_locale_id, en_locale_id):
         nodes = self.get_page_dom(page_id, es_locale_id)
         if not nodes: return False
-        
-        if not self.can_translate(page_id, 'page', nodes):
-            return False
+        if not self.can_translate(page_id, 'page', nodes): return False
 
         translated_nodes = []
         for node in nodes:
@@ -133,36 +136,51 @@ class TranslatorService:
             node_type = node.get("type")
             if not node_id: continue
                 
+            # Lógica Fiel al Código Original que funcionaba
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 if "html" in text_obj and text_obj["html"].strip():
-                    translated_nodes.append({"nodeId": node_id, "text": self.translate_text(text_obj["html"], is_html=True)})
+                    tr_html = self.translate_text(text_obj["html"], is_html=True)
+                    tr_html = html.unescape(tr_html)
+                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
                 elif "text" in text_obj and text_obj["text"].strip():
-                    translated_nodes.append({"nodeId": node_id, "text": self.translate_text(text_obj["text"], is_html=False)})
+                    tr_text = self.translate_text(text_obj["text"], is_html=False)
+                    tr_text = html.unescape(tr_text)
+                    translated_nodes.append({"nodeId": node_id, "text": tr_text})
             
             elif node_type == "submit-button":
-                if "value" in node: translated_nodes.append({"nodeId": node_id, "value": self.translate_text(node["value"], is_html=False)})
-                if "waitingText" in node: translated_nodes.append({"nodeId": node_id, "waitingText": self.translate_text(node["waitingText"], is_html=False)})
+                if "value" in node:
+                    tr_val = self.translate_text(node["value"], is_html=False)
+                    tr_val = html.unescape(tr_val)
+                    translated_nodes.append({"nodeId": node_id, "value": tr_val})
+                if "waitingText" in node:
+                    wait_val = self.translate_text(node["waitingText"], is_html=False)
+                    wait_val = html.unescape(wait_val)
+                    translated_nodes.append({"nodeId": node_id, "waitingText": wait_val})
                 
             elif "propertyOverrides" in node and isinstance(node["propertyOverrides"], dict):
                 overrides = node["propertyOverrides"]
                 new_overrides = {}
-                modified = False
+                modificado = False
                 for p_key, p_val in overrides.items():
                     if isinstance(p_val, str) and len(p_val.strip()) > 0 and (" " in p_val or len(p_val) > 4):
-                        new_overrides[p_key] = self.translate_text(p_val, is_html=False)
-                        modified = True
+                        tr_override = self.translate_text(p_val, is_html=False)
+                        tr_override = html.unescape(tr_override)
+                        new_overrides[p_key] = tr_override
+                        modificado = True
                     else:
                         new_overrides[p_key] = p_val
-                if modified: translated_nodes.append({"nodeId": node_id, "propertyOverrides": new_overrides})
+                if modificado:
+                    translated_nodes.append({"nodeId": node_id, "propertyOverrides": new_overrides})
                     
             elif "attributes" in node and isinstance(node["attributes"], dict):
                 attrs = node["attributes"]
                 if "placeholder" in attrs and isinstance(attrs["placeholder"], str) and attrs["placeholder"].strip():
-                    translated_nodes.append({"nodeId": node_id, "placeholder": self.translate_text(attrs["placeholder"], is_html=False)})
+                    tr_place = self.translate_text(attrs["placeholder"], is_html=False)
+                    tr_place = html.unescape(tr_place)
+                    translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
 
         if not translated_nodes: return False
-        
         url = f"{self.base_url}/pages/{page_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": en_locale_id}, json={"nodes": translated_nodes})
         return res.status_code == 200
@@ -179,42 +197,58 @@ class TranslatorService:
     def process_component_dom(self, component_id, es_locale_id, en_locale_id):
         nodes = self.get_component_dom(component_id, es_locale_id)
         if not nodes: return False
-        
-        if not self.can_translate(component_id, 'component', nodes):
-            return False
+        if not self.can_translate(component_id, 'component', nodes): return False
 
         translated_nodes = []
         for node in nodes:
             node_id = node.get("id")
             node_type = node.get("type")
             if not node_id: continue
+                
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 if "html" in text_obj and text_obj["html"].strip():
-                    translated_nodes.append({"nodeId": node_id, "text": self.translate_text(text_obj["html"], is_html=True)})
+                    tr_html = self.translate_text(text_obj["html"], is_html=True)
+                    tr_html = html.unescape(tr_html)
+                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
                 elif "text" in text_obj and text_obj["text"].strip():
-                    translated_nodes.append({"nodeId": node_id, "text": self.translate_text(text_obj["text"], is_html=False)})
+                    tr_text = self.translate_text(text_obj["text"], is_html=False)
+                    tr_text = html.unescape(tr_text)
+                    translated_nodes.append({"nodeId": node_id, "text": tr_text})
+            
             elif node_type == "submit-button":
-                if "value" in node: translated_nodes.append({"nodeId": node_id, "value": self.translate_text(node["value"], is_html=False)})
-                if "waitingText" in node: translated_nodes.append({"nodeId": node_id, "waitingText": self.translate_text(node["waitingText"], is_html=False)})
+                if "value" in node:
+                    tr_val = self.translate_text(node["value"], is_html=False)
+                    tr_val = html.unescape(tr_val)
+                    translated_nodes.append({"nodeId": node_id, "value": tr_val})
+                if "waitingText" in node:
+                    wait_val = self.translate_text(node["waitingText"], is_html=False)
+                    wait_val = html.unescape(wait_val)
+                    translated_nodes.append({"nodeId": node_id, "waitingText": wait_val})
+                
             elif "propertyOverrides" in node and isinstance(node["propertyOverrides"], dict):
                 overrides = node["propertyOverrides"]
                 new_overrides = {}
-                modified = False
+                modificado = False
                 for p_key, p_val in overrides.items():
                     if isinstance(p_val, str) and len(p_val.strip()) > 0 and (" " in p_val or len(p_val) > 4):
-                        new_overrides[p_key] = self.translate_text(p_val, is_html=False)
-                        modified = True
+                        tr_override = self.translate_text(p_val, is_html=False)
+                        tr_override = html.unescape(tr_override)
+                        new_overrides[p_key] = tr_override
+                        modificado = True
                     else:
                         new_overrides[p_key] = p_val
-                if modified: translated_nodes.append({"nodeId": node_id, "propertyOverrides": new_overrides})
+                if modificado:
+                    translated_nodes.append({"nodeId": node_id, "propertyOverrides": new_overrides})
+                    
             elif "attributes" in node and isinstance(node["attributes"], dict):
                 attrs = node["attributes"]
                 if "placeholder" in attrs and isinstance(attrs["placeholder"], str) and attrs["placeholder"].strip():
-                    translated_nodes.append({"nodeId": node_id, "placeholder": self.translate_text(attrs["placeholder"], is_html=False)})
+                    tr_place = self.translate_text(attrs["placeholder"], is_html=False)
+                    tr_place = html.unescape(tr_place)
+                    translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
 
         if not translated_nodes: return False
-        
         url = f"{self.base_url}/components/{component_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": en_locale_id}, json={"nodes": translated_nodes})
         return res.status_code == 200
