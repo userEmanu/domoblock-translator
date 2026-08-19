@@ -22,7 +22,6 @@ def create_app():
         db.create_all()
         from api.models import User
         if not User.query.filter_by(username='admin').first():
-            # Crear administrador inicial
             user = User(username='admin')
             user.set_password('AdminDomoblock2026*') 
             db.session.add(user)
