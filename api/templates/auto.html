@@ -1,80 +1,113 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>⚡ Creador de Reglas de Automatización</h2>
-<p>Aquí decides qué, cómo y cuándo se traducen los elementos de Domoblock. Los límites de seguridad (máx 3 por página y comprobación de hashes) se aplican automáticamente.</p>
+<h2><i class="fas fa-bolt"></i> Reglas Automáticas</h2>
+<p class="text-sm">Configura cuándo y qué elementos deben traducirse por sí solos en segundo plano.</p>
 
-<form method="POST" style="background: #ffffff; padding: 25px; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
-    
-    <label>Nombre de la Regla (Para identificarla):</label>
-    <input type="text" name="target_name" placeholder="Ej: Blog Principal Webhooks" required>
-
-    <label>Tipo de Recurso:</label>
-    <select name="target_type" required>
-        <option value="collection">Colección del CMS (Post Types)</option>
-        <option value="page">Página Estática</option>
+<form method="POST" class="card">
+    <label><i class="fas fa-layer-group"></i> ¿Qué deseas automatizar?</label>
+    <select name="target_type" id="auto_target_type" required>
+        <option value="page">Páginas Estáticas</option>
+        <option value="collection">Colecciones del CMS (Post Types)</option>
     </select>
     
-    <label>ID del Recurso (Cópialo de la pestaña Lectura Manual):</label>
-    <input type="text" name="target_id" placeholder="ID de la colección o página" required>
+    <label><i class="fas fa-bullseye"></i> Recurso Específico:</label>
+    <select name="target_id" id="auto_target_id" required>
+        <!-- Llenado por JS -->
+    </select>
 
-    <label>¿Qué dispara la traducción? (Trigger):</label>
+    <label><i class="fas fa-cogs"></i> Método de Ejecución (Trigger):</label>
     <select name="trigger_type" required>
-        <option value="cron">Por Tiempo (Cron Job en Vercel)</option>
-        <option value="webhook">Por Acción (Webhook al publicar en Webflow)</option>
+        <option value="cron">Por Tiempo (Cron Job en servidor)</option>
+        <option value="webhook">Por Acción (Al publicar en Webflow)</option>
     </select>
 
-    <label>Frecuencia de Ejecución (Solo aplica si elegiste 'Por Tiempo'):</label>
-    <select name="frequency_days">
-        <option value="1">Todos los días</option>
-        <option value="3" selected>Cada 3 días</option>
-        <option value="7">Cada 7 días</option>
-    </select>
-
-    <label>Condición de fecha: "Traducir solo si fue modificado en los últimos..."</label>
-    <select name="modified_within_days">
-        <option value="3">3 Días</option>
-        <option value="5" selected>5 Días</option>
-        <option value="10">10 Días</option>
-        <option value="30">30 Días</option>
-    </select>
+    <div style="display: flex; gap: 15px;">
+        <div style="flex: 1;">
+            <label><i class="fas fa-calendar-alt"></i> Frecuencia (Solo Cron):</label>
+            <select name="frequency_days">
+                <option value="1">Todos los días</option>
+                <option value="3" selected>Cada 3 días</option>
+                <option value="7">Cada 7 días</option>
+            </select>
+        </div>
+        <div style="flex: 1;">
+            <label><i class="fas fa-filter"></i> Filtro de Novedad:</label>
+            <select name="modified_within_days">
+                <option value="3">Modificados últimos 3 días</option>
+                <option value="5" selected>Modificados últimos 5 días</option>
+                <option value="30">Modificados últimos 30 días</option>
+            </select>
+        </div>
+    </div>
     
-    <button type="submit" style="width: 100%; margin-top: 15px; font-size: 1.1em;">➕ Agregar o Actualizar Regla</button>
+    <button type="submit" style="width: 100%; margin-top: 15px;"><i class="fas fa-plus-circle"></i> Agregar Regla Automática</button>
 </form>
 
-<h3 style="margin-top: 40px;">Listado de Reglas Activas</h3>
-<table>
-    <tr>
-        <th>Estado</th>
-        <th>Nombre & ID</th>
-        <th>Tipo</th>
-        <th>Trigger</th>
-        <th>Condición</th>
-        <th>Acciones</th>
-    </tr>
-    {% for rule in rules %}
-    <tr>
-        <td>
-            {% if rule.is_active %}
-                <span class="badge bg-success">ACTIVA</span>
-            {% else %}
-                <span class="badge bg-secondary">PAUSADA</span>
-            {% endif %}
-        </td>
-        <td><strong>{{ rule.target_name }}</strong><br><small>{{ rule.target_id }}</small></td>
-        <td>{{ 'Página' if rule.target_type == 'page' else 'Colección CMS' }}</td>
-        <td>{{ 'Tiempo (Cron)' if rule.trigger_type == 'cron' else 'Acción (Webhook)' }}</td>
-        <td><small>Frec: {{ rule.frequency_days }}d<br>Rango Mod: {{ rule.modified_within_days }}d</small></td>
-        <td>
-            <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
-                <button type="submit" class="btn {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}" style="padding: 5px 10px; font-size: 0.9em;">
-                    {% if rule.is_active %}Pausar{% else %}Activar{% endif %}
-                </button>
-            </form>
-            <form action="{{ url_for('main.delete_auto', id=rule.id) }}" method="POST" style="display:inline;">
-                <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 0.9em;">Eliminar</button>
-            </form>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
+<h3><i class="fas fa-tasks"></i> Reglas Activas</h3>
+<div style="overflow-x:auto;">
+    <table>
+        <tr>
+            <th>Estado</th>
+            <th>Recurso Automático</th>
+            <th>Método</th>
+            <th>Condiciones</th>
+            <th>Acciones</th>
+        </tr>
+        {% for rule in rules %}
+        <tr class="animate__animated animate__fadeIn">
+            <td>
+                {% if rule.is_active %}
+                    <span class="badge bg-success">ACTIVA</span>
+                {% else %}
+                    <span class="badge bg-secondary">PAUSADA</span>
+                {% endif %}
+            </td>
+            <td><strong>{{ rule.target_name }}</strong><br><small style="color:#94a3b8;">{{ rule.target_id }}</small></td>
+            <td>{{ 'Cron (Tiempo)' if rule.trigger_type == 'cron' else 'Webhook (Publicar)' }}</td>
+            <td><small>Cada: {{ rule.frequency_days }}d<br>Filtro: {{ rule.modified_within_days }}d</small></td>
+            <td>
+                <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}" title="Pausar/Activar">
+                        <i class="fas {% if rule.is_active %}fa-pause{% else %}fa-play{% endif %}"></i>
+                    </button>
+                </form>
+                <form action="{{ url_for('main.delete_auto', id=rule.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger" title="Eliminar"><i class="fas fa-trash"></i></button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<script>
+    const a_pages = [
+        {"id": "all", "name": "⚡ Automatizar TODAS las páginas"},
+        {% for p in pages %} {"id": "{{ p.id }}", "name": "{{ p.title }}"}, {% endfor %}
+    ];
+    const a_collections = [
+        {"id": "all", "name": "⚡ Automatizar TODAS las colecciones CMS"},
+        {% for c in collections %} {"id": "{{ c.id }}", "name": "{{ c.displayName }}"}, {% endfor %}
+    ];
+
+    const typeSel = document.getElementById('auto_target_type');
+    const idSel = document.getElementById('auto_target_id');
+
+    function fillAutoSelect(dataArray) {
+        idSel.innerHTML = '';
+        dataArray.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = item.name;
+            idSel.appendChild(opt);
+        });
+    }
+
+    fillAutoSelect(a_pages); // Inicial
+
+    typeSel.addEventListener('change', function() {
+        if (this.value === 'page') fillAutoSelect(a_pages);
+        else fillAutoSelect(a_collections);
+    });
+</script>
 {% endblock %}
