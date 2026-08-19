@@ -32,11 +32,11 @@ class TranslationRecord(db.Model):
 
 class AutoRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    target_id = db.Column(db.String(100), unique=True) # ID de la coleccion o de la pagina
+    target_id = db.Column(db.String(100)) # 'all' o ID especifico
     target_type = db.Column(db.String(50)) # 'page' o 'collection'
     trigger_type = db.Column(db.String(50)) # 'cron' o 'webhook'
-    frequency_days = db.Column(db.Integer, default=3) # Cada cuantos días se ejecuta (para cron)
-    modified_within_days = db.Column(db.Integer, default=5) # Traducir lo modificado en los últimos X días
+    frequency_days = db.Column(db.Integer, default=3)
+    modified_within_days = db.Column(db.Integer, default=5)
     is_active = db.Column(db.Boolean, default=True)
     last_run = db.Column(db.DateTime, default=datetime.utcnow)
-    target_name = db.Column(db.String(150)) # Nombre para mostrar en el panel
+    target_name = db.Column(db.String(150))
