@@ -74,7 +74,6 @@ def dashboard():
     if translator:
         usage = translator.get_deepl_usage()
 
-    # SOLUCIÓN DEL ERROR 500: Se agregó timedelta a los imports para calcular la hora
     utc_now = datetime.utcnow()
     colombia_time = utc_now - timedelta(hours=5)
 
