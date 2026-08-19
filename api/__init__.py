@@ -7,7 +7,14 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     
     app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'default_local_secret_domoblock2026')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('POSTGRES_URL', 'sqlite:///local.db')
+    
+    # SOLUCIÓN: Buscamos DATABASE_URL (Neon) o POSTGRES_URL, y si no hay ninguna, usamos SQLite local.
+    # Además, SQLAlchemy requiere que la URL empiece por "postgresql://" en vez de "postgres://"
+    db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL') or 'sqlite:///local.db'
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+        
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
