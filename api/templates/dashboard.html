@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>⚙️ Configuración y Consumo</h2>
+<div style="background: #e9ecef; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 5px solid #007bff;">
+    <h3 style="margin-top: 0;">Analíticas de DeepL</h3>
+    <strong style="font-size: 1.2em;">{{ usage }}</strong>
+</div>
+
+<h3>Credenciales del Sistema</h3>
+<form method="POST">
+    <label>DeepL API Key:</label>
+    <input type="password" name="deepl_key" value="{{ config.deepl_api_key or '' }}" required>
+    
+    <label>Webflow API Token:</label>
+    <input type="password" name="webflow_token" value="{{ config.webflow_token or '' }}" required>
+    
+    <label>Webflow Site ID:</label>
+    <input type="text" name="site_id" value="{{ config.site_id or '' }}" placeholder="Ej: 6842f0d789a8945f6e85442c" required>
+    
+    <button type="submit">Actualizar Credenciales</button>
+</form>
+{% endblock %}

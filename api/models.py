@@ -1,0 +1,42 @@
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
+
+db = SQLAlchemy()
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+class Settings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    deepl_api_key = db.Column(db.String(256))
+    webflow_token = db.Column(db.String(256))
+    site_id = db.Column(db.String(100))
+    admin_email = db.Column(db.String(120), default="emanueel031@gmail.com")
+
+class TranslationRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.String(100), index=True) 
+    item_type = db.Column(db.String(50)) # 'page' o 'collection'
+    translation_count = db.Column(db.Integer, default=0)
+    last_translated = db.Column(db.DateTime, default=datetime.utcnow)
+    content_hash = db.Column(db.String(256))
+
+class AutoRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    target_id = db.Column(db.String(100), unique=True) # ID de la coleccion o de la pagina
+    target_type = db.Column(db.String(50)) # 'page' o 'collection'
+    trigger_type = db.Column(db.String(50)) # 'cron' o 'webhook'
+    frequency_days = db.Column(db.Integer, default=3) # Cada cuantos días se ejecuta (para cron)
+    modified_within_days = db.Column(db.Integer, default=5) # Traducir lo modificado en los últimos X días
+    is_active = db.Column(db.Boolean, default=True)
+    last_run = db.Column(db.DateTime, default=datetime.utcnow)
+    target_name = db.Column(db.String(150)) # Nombre para mostrar en el panel

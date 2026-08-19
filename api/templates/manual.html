@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>🔍 Listado de Recursos (IDs)</h2>
+<p>Utiliza esta pantalla para copiar los IDs exactos de las colecciones o páginas que quieres automatizar en la pestaña "Reglas".</p>
+
+<h3>Colecciones del CMS</h3>
+<table>
+    <tr><th>Nombre de la Colección</th><th>ID (Copiar)</th></tr>
+    {% for col in collections %}
+    <tr><td>{{ col.displayName }}</td><td><code>{{ col.id }}</code></td></tr>
+    {% endfor %}
+</table>
+
+<h3 style="margin-top: 30px;">Páginas Estáticas</h3>
+<table>
+    <tr><th>Título de la Página</th><th>ID (Copiar)</th></tr>
+    {% for p in pages %}
+    <tr><td>{{ p.title }}</td><td><code>{{ p.id }}</code></td></tr>
+    {% endfor %}
+</table>
+{% endblock %}

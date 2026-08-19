@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>⚡ Creador de Reglas de Automatización</h2>
+<p>Aquí decides qué, cómo y cuándo se traducen los elementos de Domoblock. Los límites de seguridad (máx 3 por página y comprobación de hashes) se aplican automáticamente.</p>
+
+<form method="POST" style="background: #ffffff; padding: 25px; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+    
+    <label>Nombre de la Regla (Para identificarla):</label>
+    <input type="text" name="target_name" placeholder="Ej: Blog Principal Webhooks" required>
+
+    <label>Tipo de Recurso:</label>
+    <select name="target_type" required>
+        <option value="collection">Colección del CMS (Post Types)</option>
+        <option value="page">Página Estática</option>
+    </select>
+    
+    <label>ID del Recurso (Cópialo de la pestaña Lectura Manual):</label>
+    <input type="text" name="target_id" placeholder="ID de la colección o página" required>
+
+    <label>¿Qué dispara la traducción? (Trigger):</label>
+    <select name="trigger_type" required>
+        <option value="cron">Por Tiempo (Cron Job en Vercel)</option>
+        <option value="webhook">Por Acción (Webhook al publicar en Webflow)</option>
+    </select>
+
+    <label>Frecuencia de Ejecución (Solo aplica si elegiste 'Por Tiempo'):</label>
+    <select name="frequency_days">
+        <option value="1">Todos los días</option>
+        <option value="3" selected>Cada 3 días</option>
+        <option value="7">Cada 7 días</option>
+    </select>
+
+    <label>Condición de fecha: "Traducir solo si fue modificado en los últimos..."</label>
+    <select name="modified_within_days">
+        <option value="3">3 Días</option>
+        <option value="5" selected>5 Días</option>
+        <option value="10">10 Días</option>
+        <option value="30">30 Días</option>
+    </select>
+    
+    <button type="submit" style="width: 100%; margin-top: 15px; font-size: 1.1em;">➕ Agregar o Actualizar Regla</button>
+</form>
+
+<h3 style="margin-top: 40px;">Listado de Reglas Activas</h3>
+<table>
+    <tr>
+        <th>Estado</th>
+        <th>Nombre & ID</th>
+        <th>Tipo</th>
+        <th>Trigger</th>
+        <th>Condición</th>
+        <th>Acciones</th>
+    </tr>
+    {% for rule in rules %}
+    <tr>
+        <td>
+            {% if rule.is_active %}
+                <span class="badge bg-success">ACTIVA</span>
+            {% else %}
+                <span class="badge bg-secondary">PAUSADA</span>
+            {% endif %}
+        </td>
+        <td><strong>{{ rule.target_name }}</strong><br><small>{{ rule.target_id }}</small></td>
+        <td>{{ 'Página' if rule.target_type == 'page' else 'Colección CMS' }}</td>
+        <td>{{ 'Tiempo (Cron)' if rule.trigger_type == 'cron' else 'Acción (Webhook)' }}</td>
+        <td><small>Frec: {{ rule.frequency_days }}d<br>Rango Mod: {{ rule.modified_within_days }}d</small></td>
+        <td>
+            <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
+                <button type="submit" class="btn {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}" style="padding: 5px 10px; font-size: 0.9em;">
+                    {% if rule.is_active %}Pausar{% else %}Activar{% endif %}
+                </button>
+            </form>
+            <form action="{{ url_for('main.delete_auto', id=rule.id) }}" method="POST" style="display:inline;">
+                <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 0.9em;">Eliminar</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
