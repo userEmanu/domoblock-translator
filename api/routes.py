@@ -30,12 +30,13 @@ def login():
         password = request.form.get('password')
         recaptcha_response = request.form.get('g-recaptcha-response')
 
-        # Validación reCAPTCHA v2 (Impenetrable)
+        # Validación reCAPTCHA v3 (Invisible e Impenetrable)
         verify_url = 'https://www.google.com/recaptcha/api/siteverify'
         r_result = requests.post(verify_url, data={'secret': RECAPTCHA_SECRET, 'response': recaptcha_response}).json()
 
-        if not r_result.get('success'):
-            flash("Verificación reCAPTCHA fallida. Intenta de nuevo.", "danger")
+        # En reCAPTCHA v3 evaluamos que sea exitoso y que el score sea alto (>= 0.5 es humano)
+        if not r_result.get('success') or r_result.get('score', 0) < 0.5:
+            flash("Verificación reCAPTCHA fallida o comportamiento sospechoso detectado.", "danger")
             return render_template('login.html')
 
         user = User.query.filter_by(username=username).first()
@@ -107,7 +108,6 @@ def auto():
         modified_within_days = int(request.form.get('modified_within_days', 5))
         target_name = request.form.get('target_name', 'Recurso sin nombre')
         
-        # Eliminar regla si existe para actualizarla
         exists = AutoRule.query.filter_by(target_id=target_id).first()
         if exists: db.session.delete(exists)
 
@@ -145,12 +145,11 @@ def delete_auto(id):
     return redirect(url_for('main.auto'))
 
 # ==========================================
-# ENDPOINTS AUTOMÁTICOS (100% LÓGICA COMPLETA)
+# ENDPOINTS AUTOMÁTICOS (CRON Y WEBHOOKS)
 # ==========================================
 
 @main.route('/api/cron/translate', methods=['GET', 'POST'])
 def cron_translate():
-    # Protegido en Vercel
     auth_header = request.headers.get('Authorization')
     expected_secret = f"Bearer {os.environ.get('CRON_SECRET', 'dev_secret')}"
     if auth_header != expected_secret and os.environ.get('FLASK_ENV') != 'development':
@@ -167,14 +166,12 @@ def cron_translate():
     translated_count = 0
 
     for rule in rules:
-        # Validar frecuencia (ej. Ejecutar cada 3 días)
         if (now - rule.last_run).days < rule.frequency_days:
-            continue # Aún no le toca a esta regla
+            continue
             
         if rule.target_type == 'collection':
             items = translator.get_items(rule.target_id, es_loc['cmsLocaleId'])
             for item in items:
-                # Validar modificados en los últimos X días
                 date_str = item.get('updatedOn', '')[:19]
                 if date_str:
                     updated_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
@@ -193,7 +190,6 @@ def cron_translate():
                         if translator.process_page_dom(rule.target_id, es_loc['id'], en_loc['id']):
                             translated_count += 1
                             
-        # Actualizamos la fecha de la última ejecución de la regla
         rule.last_run = now
         db.session.commit()
 
@@ -201,7 +197,6 @@ def cron_translate():
 
 @main.route('/api/webhook/webflow', methods=['POST'])
 def webflow_webhook():
-    # Webhook que dispara inmediatamente cuando modificas y publicas
     data = request.json
     if not data: return jsonify({"status": "No data"}), 400
 
@@ -214,24 +209,23 @@ def webflow_webhook():
     item_id = data.get('_id')
     collection_id = data.get('_cid')
     
-    # 1. Validación para Colecciones CMS
     if collection_id and item_id:
         rule = AutoRule.query.filter_by(target_id=collection_id, target_type='collection', trigger_type='webhook', is_active=True).first()
         if rule:
-            # Traer el ítem completo para asegurar estructura
             full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
             if full_item:
                 translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
                 return jsonify({"status": "CMS Item procesado vía Webhook"})
 
-    # 2. Validación para Páginas (Webflow emite Site Publish webhook)
     elif data.get('siteId') == config.site_id:
-        # En Site Publish, Webflow no envía el ID de una página específica, sino que se publicó el sitio.
-        # Por lo tanto, revisamos TODAS las reglas de Webhook para páginas que estén activas.
+        page_id = data.get('pageId')
+        if page_id and AutoRule.query.filter_by(target_id=page_id, target_type='page').first():
+            translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
+            return jsonify({"status": "Page processed"})
+        
         page_rules = AutoRule.query.filter_by(target_type='page', trigger_type='webhook', is_active=True).all()
         processed = 0
         for rule in page_rules:
-            # La lógica limitadora de Hashes y 3 máximos evitará sobreescrituras innecesarias.
             if translator.process_page_dom(rule.target_id, es_loc['id'], en_loc['id']):
                 processed += 1
                 
