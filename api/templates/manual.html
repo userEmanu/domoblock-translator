@@ -1,96 +1,88 @@
 {% extends "base.html" %}
 {% block content %}
-<h2><i class="fas fa-hand-pointer"></i> Ejecución Manual Inmediata</h2>
-<p class="text-sm">Fuerza la traducción de cualquier recurso ahora mismo utilizando selectores dinámicos conectados a tu Webflow.</p>
+<h2><i class="fas fa-hand-pointer"></i> Traducción Manual por Selección</h2>
+<p class="text-sm">Utilice los buscadores desplegables para localizar y traducir un recurso específico inmediatamente.</p>
 
-<form method="POST" action="{{ url_for('main.manual_translate') }}" class="card" id="manualForm">
-    <label><i class="fas fa-layer-group"></i> Selecciona el Tipo de Recurso:</label>
-    <select name="target_type" id="target_type" required>
-        <option value="" disabled selected>Elige un tipo...</option>
+<form method="POST" action="{{ url_for('main.manual_translate') }}" class="card" id="manualForm" style="padding-bottom: 30px;">
+    
+    <label><i class="fas fa-layer-group"></i> Seleccione el Tipo de Recurso:</label>
+    <select name="target_type" id="target_type" class="select2-enable" required>
+        <option value="" disabled selected>Seleccione un tipo...</option>
         <option value="page">Páginas Estáticas</option>
         <option value="collection">Colecciones del CMS</option>
-        <option value="component">Componentes (Navbar, Footer, etc.)</option>
+        <option value="component">Componentes (Símbolos)</option>
     </select>
 
-    <div id="target_container" style="display: none;">
-        <label id="target_label"><i class="fas fa-bullseye"></i> Selecciona el Elemento Específico:</label>
-        <select name="target_id" id="target_id" required>
-            <!-- Llenado por JS -->
+    <div id="target_container" style="display: none; margin-top: 20px;">
+        <label id="target_label"><i class="fas fa-bullseye"></i> Busque el Recurso Específico:</label>
+        <select name="target_id" id="target_id" class="select2-enable" required>
+            <!-- Llenado dinámicamente -->
         </select>
     </div>
 
-    <div id="item_container" style="display: none;">
-        <label><i class="fas fa-file-alt"></i> Selecciona el Post/Item:</label>
-        <select name="item_id" id="item_id">
+    <div id="item_container" style="display: none; margin-top: 20px;">
+        <label><i class="fas fa-file-alt"></i> Busque el Post / Ítem Específico:</label>
+        <select name="item_id" id="item_id" class="select2-enable">
             <option value="all">⚡ Traducir TODOS los posts de esta colección</option>
-            <!-- Llenado por AJAX -->
+            <!-- Llenado vía AJAX -->
         </select>
     </div>
 
-    <button type="submit" id="submitBtn" style="width:100%; display:none;"><i class="fas fa-language"></i> Traducir Ahora</button>
-    <p class="text-sm" style="color: #fca5a5; margin-top: 15px;"><i class="fas fa-exclamation-triangle"></i> Nota: Traducir "TODO" manualmente puede tardar varios segundos y generar Error 504 en Vercel por tiempo de espera. Para volúmenes grandes, usa la pestaña Automatización.</p>
+    <button type="submit" id="submitBtn" style="width:100%; display:none; margin-top: 25px;"><i class="fas fa-language"></i> Ejecutar Traducción</button>
 </form>
 
 <script>
     const pages = [
         {"id": "all", "name": "⚡ Traducir TODAS las páginas estáticas"},
-        {% for p in pages %} {"id": "{{ p.id }}", "name": "{{ p.title }}"}, {% endfor %}
+        {% for p in pages %} {"id": "{{ p.id }}", "name": "{{ p.title|replace('"', '\\"') }}"}, {% endfor %}
     ];
     const collections = [
         {"id": "all", "name": "⚡ Traducir TODAS las colecciones del CMS"},
-        {% for c in collections %} {"id": "{{ c.id }}", "name": "{{ c.displayName }}"}, {% endfor %}
+        {% for c in collections %} {"id": "{{ c.id }}", "name": "{{ c.displayName|replace('"', '\\"') }}"}, {% endfor %}
     ];
     const components = [
         {"id": "all", "name": "⚡ Traducir TODOS los componentes"},
-        {% for c in components %} {"id": "{{ c.id }}", "name": "{{ c.name }}"}, {% endfor %}
+        {% for c in components %} {"id": "{{ c.id }}", "name": "{{ c.name|replace('"', '\\"') }}"}, {% endfor %}
     ];
 
-    const typeSelect = document.getElementById('target_type');
-    const targetSelect = document.getElementById('target_id');
-    const targetContainer = document.getElementById('target_container');
-    const itemSelect = document.getElementById('item_id');
-    const itemContainer = document.getElementById('item_container');
-    const submitBtn = document.getElementById('submitBtn');
-
-    function populateSelect(selectElem, dataArray) {
-        selectElem.innerHTML = '';
+    function fillOptions(selectId, dataArray) {
+        let select = $('#' + selectId);
+        select.empty();
         dataArray.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item.id;
-            opt.textContent = item.name;
-            selectElem.appendChild(opt);
+            let option = new Option(item.name, item.id, false, false);
+            select.append(option);
         });
+        select.trigger('change.select2'); // Refresca Select2 visualmente
     }
 
-    typeSelect.addEventListener('change', function() {
-        targetContainer.style.display = 'block';
-        itemContainer.style.display = 'none';
-        submitBtn.style.display = 'block';
-        itemSelect.innerHTML = '<option value="all">⚡ Traducir TODOS los posts de esta colección</option>';
+    $('#target_type').on('change', function() {
+        $('#target_container').show();
+        $('#item_container').hide();
+        $('#submitBtn').show();
         
-        if (this.value === 'page') populateSelect(targetSelect, pages);
-        else if (this.value === 'collection') populateSelect(targetSelect, collections);
-        else if (this.value === 'component') populateSelect(targetSelect, components);
+        let type = $(this).val();
+        if (type === 'page') fillOptions('target_id', pages);
+        else if (type === 'collection') fillOptions('target_id', collections);
+        else if (type === 'component') fillOptions('target_id', components);
     });
 
-    targetSelect.addEventListener('change', function() {
-        if (typeSelect.value === 'collection' && this.value !== 'all') {
-            itemContainer.style.display = 'block';
-            itemSelect.innerHTML = '<option value="all">Cargando posts de Webflow...</option>';
+    $('#target_id').on('change', function() {
+        let type = $('#target_type').val();
+        let targetId = $(this).val();
+
+        if (type === 'collection' && targetId !== 'all' && targetId !== null) {
+            $('#item_container').show();
+            $('#item_id').empty().append(new Option('Cargando posts desde Webflow...', 'all', true, true)).trigger('change.select2');
             
-            fetch('/api/items/' + this.value)
-                .then(response => response.json())
+            fetch('/api/items/' + targetId)
+                .then(res => res.json())
                 .then(data => {
-                    itemSelect.innerHTML = '<option value="all">⚡ Traducir TODOS los posts de esta colección</option>';
-                    data.forEach(i => {
-                        const opt = document.createElement('option');
-                        opt.value = i.id;
-                        opt.textContent = i.name;
-                        itemSelect.appendChild(opt);
-                    });
+                    let itemsArray = [{"id": "all", "name": "⚡ Traducir TODOS los posts de esta colección"}];
+                    data.forEach(i => itemsArray.push({"id": i.id, "name": i.name}));
+                    fillOptions('item_id', itemsArray);
                 });
         } else {
-            itemContainer.style.display = 'none';
+            $('#item_container').hide();
         }
     });
 </script>
