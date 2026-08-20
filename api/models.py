@@ -21,8 +21,6 @@ class Settings(db.Model):
     webflow_token = db.Column(db.String(256))
     site_id = db.Column(db.String(100))
     webflow_webhook_secret = db.Column(db.String(256))
-    
-    # Configuración SMTP agregada
     admin_email = db.Column(db.String(120), default="emanueel031@gmail.com")
     smtp_email = db.Column(db.String(120), default="supportitgv@gmail.com")
     smtp_password = db.Column(db.String(256))
