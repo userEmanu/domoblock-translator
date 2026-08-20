@@ -27,20 +27,24 @@ def create_app():
         db.create_all()
         
         # --- AUTO MIGRACIÓN DE ESQUEMA ---
+        # Garantiza que cualquier columna nueva se añada sin generar Errores 500
         try:
             inspector = inspect(db.engine)
             if inspector.has_table('settings'):
                 columns = [col['name'] for col in inspector.get_columns('settings')]
-                with db.engine.connect() as conn:
-                    if 'webflow_webhook_secret' not in columns:
-                        conn.execute(text('ALTER TABLE settings ADD COLUMN webflow_webhook_secret VARCHAR(256)'))
+                with db.engine.begin() as conn:
                     if 'smtp_email' not in columns:
                         conn.execute(text('ALTER TABLE settings ADD COLUMN smtp_email VARCHAR(120)'))
                     if 'smtp_password' not in columns:
                         conn.execute(text('ALTER TABLE settings ADD COLUMN smtp_password VARCHAR(256)'))
                     if 'admin_email' not in columns:
                         conn.execute(text('ALTER TABLE settings ADD COLUMN admin_email VARCHAR(120)'))
-                    conn.commit()
+            
+            if inspector.has_table('auto_rule'):
+                columns = [col['name'] for col in inspector.get_columns('auto_rule')]
+                with db.engine.begin() as conn:
+                    if 'webhook_secret' not in columns:
+                        conn.execute(text('ALTER TABLE auto_rule ADD COLUMN webhook_secret VARCHAR(256)'))
         except Exception as e:
             print(f"Error en auto-migración de base de datos: {e}")
 
