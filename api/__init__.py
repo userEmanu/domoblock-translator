@@ -1,4 +1,5 @@
 import os
+import tempfile
 from flask import Flask
 from api.models import db
 from api.routes import main
@@ -8,7 +9,10 @@ def create_app():
     
     app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'default_local_secret_domoblock2026')
     
-    db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL') or 'sqlite:///local.db'
+    tmp_db_path = os.path.join(tempfile.gettempdir(), 'local.db')
+    fallback_uri = f'sqlite:///{tmp_db_path}'
+    
+    db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL') or fallback_uri
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
         
