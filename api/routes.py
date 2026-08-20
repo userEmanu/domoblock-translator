@@ -1,4 +1,6 @@
 import os
+import hmac
+import hashlib
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 import requests
@@ -39,8 +41,8 @@ def login():
         if user and user.check_password(password):
             session['logged_in'] = True
             config = Settings.query.first()
-            if config and config.admin_email:
-                send_login_alert(config.admin_email)
+            if config and config.admin_email and config.smtp_email and config.smtp_password:
+                send_login_alert(config.admin_email, config.smtp_email, config.smtp_password)
             return redirect(url_for('main.dashboard'))
         else:
             flash("Credenciales incorrectas", "danger")
@@ -58,7 +60,7 @@ def logout():
 def dashboard():
     config = Settings.query.first()
     if not config:
-        config = Settings(admin_email="emanueel031@gmail.com")
+        config = Settings(admin_email="emanueel031@gmail.com", smtp_email="supportitgv@gmail.com")
         db.session.add(config)
         db.session.commit()
 
@@ -66,6 +68,10 @@ def dashboard():
         config.deepl_api_key = request.form.get('deepl_key')
         config.webflow_token = request.form.get('webflow_token')
         config.site_id = request.form.get('site_id')
+        config.webflow_webhook_secret = request.form.get('webflow_webhook_secret')
+        config.admin_email = request.form.get('admin_email')
+        config.smtp_email = request.form.get('smtp_email')
+        config.smtp_password = request.form.get('smtp_password')
         db.session.commit()
         flash("Configuración guardada exitosamente.", "success")
 
@@ -77,7 +83,7 @@ def dashboard():
     utc_now = datetime.utcnow()
     colombia_time = utc_now - timedelta(hours=5)
 
-    return render_template('dashboard.html', config=config, usage=usage, current_time=colombia_time.strftime('%Y-%m-%d %H:%M:%S'))
+    return render_template('dashboard.html', config=config, usage=usage, current_time=colombia_time.strftime('%Y-%m-%d %I:%M %p'))
 
 # ==========================================
 # RUTAS DE TRADUCCIÓN MANUAL
@@ -88,7 +94,7 @@ def dashboard():
 def manual():
     translator, config = get_translator()
     if not translator:
-        flash("Configura las APIs en el Dashboard primero.", "warning")
+        flash("Configure las APIs en el Dashboard primero.", "warning")
         return redirect(url_for('main.dashboard'))
     
     pages = translator.get_pages(config.site_id)
@@ -112,7 +118,6 @@ def manual_translate():
     if not translator: return redirect(url_for('main.manual'))
 
     es_loc, en_loc = translator.get_locales(config.site_id)
-    
     target_type = request.form.get('target_type')
     target_id = request.form.get('target_id')
     item_id = request.form.get('item_id')
@@ -149,7 +154,7 @@ def manual_translate():
         else:
             if translator.process_component_dom(target_id, es_id, en_id): processed += 1
 
-    flash(f"Traducción manual finalizada. Nodos/Ítems procesados y subidos: {processed}", "success")
+    flash(f"Traducción manual finalizada. Nodos/Ítems procesados: {processed}", "success")
     return redirect(url_for('main.manual'))
 
 # ==========================================
@@ -161,18 +166,19 @@ def manual_translate():
 def auto():
     translator, config = get_translator()
     if not translator:
-        flash("Configura las APIs en el Dashboard primero.", "warning")
+        flash("Configure las APIs en el Dashboard primero.", "warning")
         return redirect(url_for('main.dashboard'))
 
     if request.method == 'POST':
         target_id = request.form.get('target_id')
         target_type = request.form.get('target_type')
         trigger_type = request.form.get('trigger_type')
-        frequency_days = int(request.form.get('frequency_days', 3))
-        modified_within_days = int(request.form.get('modified_within_days', 5))
+        
+        frequency_days = int(request.form.get('frequency_days', 3)) if trigger_type == 'cron' else 0
+        modified_within_days = int(request.form.get('modified_within_days', 5)) if trigger_type == 'cron' else 0
         
         if target_id == 'all':
-            target_name = f"Todas las {'Páginas' if target_type == 'page' else 'Colecciones CMS'}"
+            target_name = f"Todas las {'Páginas' if target_type == 'page' else 'Colecciones'}"
         else:
             target_name = "Recurso Específico"
             if target_type == 'page':
@@ -194,7 +200,7 @@ def auto():
         )
         db.session.add(new_rule)
         db.session.commit()
-        flash("Regla de automatización agregada/actualizada con éxito.", "success")
+        flash("Regla de automatización guardada.", "success")
 
     rules = AutoRule.query.all()
     pages = translator.get_pages(config.site_id)
@@ -274,11 +280,25 @@ def cron_translate():
 
 @main.route('/api/webhook/webflow', methods=['POST'])
 def webflow_webhook():
-    data = request.json
-    if not data: return jsonify({"status": "No data"}), 400
-
     translator, config = get_translator()
     if not translator: return jsonify({"status": "No config"}), 200
+
+    if config.webflow_webhook_secret:
+        signature = request.headers.get('x-webflow-signature')
+        timestamp = request.headers.get('x-webflow-timestamp')
+        if signature and timestamp:
+            msg = f"{timestamp}:{request.get_data(as_text=True)}"
+            expected_sig = hmac.new(
+                config.webflow_webhook_secret.encode('utf-8'),
+                msg.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(expected_sig, signature):
+                return jsonify({"error": "Firma inválida."}), 401
+
+    data = request.json
+    if not data: return jsonify({"status": "No data"}), 400
 
     es_loc, en_loc = translator.get_locales(config.site_id)
     if not es_loc: return jsonify({"status": "locales error"}), 200
