@@ -21,8 +21,8 @@
         <option value="webhook">Por Acción (Al publicar en Webflow)</option>
     </select>
 
-    <div style="display: flex; gap: 15px;">
-        <div style="flex: 1;">
+    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
             <label><i class="fas fa-calendar-alt"></i> Frecuencia (Solo Cron):</label>
             <select name="frequency_days">
                 <option value="1">Todos los días</option>
@@ -30,7 +30,7 @@
                 <option value="7">Cada 7 días</option>
             </select>
         </div>
-        <div style="flex: 1;">
+        <div style="flex: 1; min-width: 200px;">
             <label><i class="fas fa-filter"></i> Filtro de Novedad:</label>
             <select name="modified_within_days">
                 <option value="3">Modificados últimos 3 días</option>
@@ -103,7 +103,7 @@
         });
     }
 
-    fillAutoSelect(a_pages); // Inicial
+    fillAutoSelect(a_pages); 
 
     typeSel.addEventListener('change', function() {
         if (this.value === 'page') fillAutoSelect(a_pages);
