@@ -20,7 +20,7 @@ class Settings(db.Model):
     deepl_api_key = db.Column(db.String(256))
     webflow_token = db.Column(db.String(256))
     site_id = db.Column(db.String(100))
-    webflow_webhook_secret = db.Column(db.String(256))
+    # Configuración SMTP y Correo
     admin_email = db.Column(db.String(120), default="emanueel031@gmail.com")
     smtp_email = db.Column(db.String(120), default="supportitgv@gmail.com")
     smtp_password = db.Column(db.String(256))
@@ -43,3 +43,5 @@ class AutoRule(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     last_run = db.Column(db.DateTime, default=datetime.utcnow)
     target_name = db.Column(db.String(150))
+    # Clave de seguridad única por cada Webhook
+    webhook_secret = db.Column(db.String(256))
