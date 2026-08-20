@@ -8,19 +8,20 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from api.models import db, TranslationRecord
 
-def send_login_alert(target_email):
-    sender = "supportitgv@gmail.com"
-    msg = MIMEText(f"Se ha detectado un nuevo inicio de sesión exitoso en tu panel administrativo de Webflow-DeepL a las {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
-    msg['Subject'] = 'Alerta de Seguridad: Nuevo Ingreso'
-    msg['From'] = sender
+def send_login_alert(target_email, smtp_email, smtp_password):
+    if not smtp_email or not smtp_password:
+        print("Configuración SMTP incompleta. No se enviará el correo.")
+        return
+
+    msg = MIMEText(f"Se ha detectado un nuevo inicio de sesión exitoso en su panel administrativo de traducciones a las {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
+    msg['Subject'] = 'Alerta de Seguridad: Nuevo Ingreso (Domoblock Translator)'
+    msg['From'] = smtp_email
     msg['To'] = target_email
 
     try:
-        password = os.environ.get('GOOGLE_APP_PASSWORD')
-        if password:
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-                server.login(sender, password)
-                server.send_message(msg)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(smtp_email, smtp_password)
+            server.send_message(msg)
     except Exception as e:
         print(f"Error enviando correo de seguridad: {e}")
 
@@ -33,6 +34,18 @@ class TranslatorService:
             "Content-Type": "application/json"
         }
         self.translator = deepl.Translator(deepl_key)
+        self.log_filename = "/tmp/webflow_translator.log" if os.environ.get('VERCEL') else "webflow_translator.log"
+
+    def escribe_log(self, mensaje, mostrar_consola=True):
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        linea_log = f"[{timestamp}] {mensaje}"
+        try:
+            with open(self.log_filename, "a", encoding="utf-8") as archivo_log:
+                archivo_log.write(linea_log + "\n")
+        except Exception:
+            pass
+        if mostrar_consola:
+            print(mensaje)
 
     def get_deepl_usage(self):
         try:
@@ -41,7 +54,7 @@ class TranslatorService:
                 return f"{usage.character.count} / {usage.character.limit} caracteres usados"
             return f"{usage.character.count} caracteres consumidos"
         except Exception:
-            return "No se pudo obtener el consumo. Verifica tu API Key."
+            return "No se pudo obtener el consumo. Verifique su API Key."
 
     def get_locales(self, site_id):
         res = requests.get(f"{self.base_url}/sites/{site_id}", headers=self.headers)
@@ -63,6 +76,7 @@ class TranslatorService:
                 return False 
             if item_type == 'page' and record.translation_count >= 3:
                 return False 
+            
             record.content_hash = current_hash
             record.translation_count += 1
             record.last_translated = datetime.utcnow()
@@ -82,7 +96,7 @@ class TranslatorService:
                 res = self.translator.translate_text(text, source_lang="ES", target_lang="EN-US")
             return res.text
         except Exception as e:
-            print(f"Error DeepL: {e}")
+            self.escribe_log(f"⚠️ Error DeepL: {e}")
             return text
 
     # --- CMS API ---
@@ -109,6 +123,7 @@ class TranslatorService:
                 tr_val = self.translate_text(value, is_html=es_html)
                 tr_val = html.unescape(tr_val)
                 translated_fields[key] = tr_val
+                self.escribe_log(f"📝 CMS Original: {value[:40]}\n   ➜ DeepL: {tr_val[:40]}")
             else:
                 translated_fields[key] = value
 
@@ -123,36 +138,52 @@ class TranslatorService:
 
     def get_page_dom(self, page_id, locale_id):
         res = requests.get(f"{self.base_url}/pages/{page_id}/dom", headers=self.headers, params={"localeId": locale_id})
-        return res.json().get('nodes', []) if res.status_code == 200 else []
+        if res.status_code != 200:
+            self.escribe_log(f"❌ Error leyendo la página en Webflow: {res.text}")
+            return []
+        return res.json().get('nodes', [])
 
     def process_page_dom(self, page_id, es_locale_id, en_locale_id):
+        self.escribe_log(f"\n======================================")
+        self.escribe_log(f"Iniciando traducción de DOM ID: '{page_id}'")
+        self.escribe_log(f"======================================")
+        
         nodes = self.get_page_dom(page_id, es_locale_id)
         if not nodes: return False
-        if not self.can_translate(page_id, 'page', nodes): return False
+        
+        if not self.can_translate(page_id, 'page', nodes):
+            self.escribe_log(f"⚠️ No se encontraron cambios o se alcanzó el límite de traducciones automáticas.")
+            return False
 
         translated_nodes = []
+        self.escribe_log(f"Analizando {len(nodes)} nodos estructurales...", mostrar_consola=True)
+
         for node in nodes:
             node_id = node.get("id")
             node_type = node.get("type")
             if not node_id: continue
                 
-            # Lógica Fiel al Código Original que funcionaba
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 if "html" in text_obj and text_obj["html"].strip():
-                    tr_html = self.translate_text(text_obj["html"], is_html=True)
+                    original_html = text_obj["html"]
+                    tr_html = self.translate_text(original_html, is_html=True)
                     tr_html = html.unescape(tr_html)
                     translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                    self.escribe_log(f"📝 Nodo Text [HTML]: \n   ES: {original_html[:50]}...\n   EN: {tr_html[:50]}...\n")
                 elif "text" in text_obj and text_obj["text"].strip():
-                    tr_text = self.translate_text(text_obj["text"], is_html=False)
+                    original_text = text_obj["text"]
+                    tr_text = self.translate_text(original_text, is_html=False)
                     tr_text = html.unescape(tr_text)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
+                    self.escribe_log(f"📝 Nodo Text [Plano]: \n   ES: {original_text[:50]}...\n   EN: {tr_text[:50]}...\n")
             
             elif node_type == "submit-button":
                 if "value" in node:
                     tr_val = self.translate_text(node["value"], is_html=False)
                     tr_val = html.unescape(tr_val)
                     translated_nodes.append({"nodeId": node_id, "value": tr_val})
+                    self.escribe_log(f"🔘 Botón [Value]: \n   ES: {node['value']} \n   EN: {tr_val}\n")
                 if "waitingText" in node:
                     wait_val = self.translate_text(node["waitingText"], is_html=False)
                     wait_val = html.unescape(wait_val)
@@ -167,6 +198,7 @@ class TranslatorService:
                         tr_override = self.translate_text(p_val, is_html=False)
                         tr_override = html.unescape(tr_override)
                         new_overrides[p_key] = tr_override
+                        self.escribe_log(f"🔄 Override Componente: \n   ES: {p_val[:50]}...\n   EN: {tr_override[:50]}...\n")
                         modificado = True
                     else:
                         new_overrides[p_key] = p_val
@@ -179,11 +211,21 @@ class TranslatorService:
                     tr_place = self.translate_text(attrs["placeholder"], is_html=False)
                     tr_place = html.unescape(tr_place)
                     translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
+                    self.escribe_log(f"✍️ Placeholder: \n   ES: {attrs['placeholder']} \n   EN: {tr_place}\n")
 
-        if not translated_nodes: return False
+        if not translated_nodes:
+            self.escribe_log(f"⚠️ No se encontraron textos válidos para traducir.")
+            return False
+        
+        self.escribe_log(f"Subiendo {len(translated_nodes)} nodos completamente traducidos hacia Webflow...")
         url = f"{self.base_url}/pages/{page_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": en_locale_id}, json={"nodes": translated_nodes})
-        return res.status_code == 200
+        if res.status_code == 200:
+            self.escribe_log(f"✅ Éxito absoluto en la inyección de DOM.")
+            return True
+        else:
+            self.escribe_log(f"❌ Fallo al actualizar DOM. Error: {res.text}")
+            return False
 
     # --- COMPONENTS API ---
     def get_components(self, site_id):
@@ -249,6 +291,7 @@ class TranslatorService:
                     translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
 
         if not translated_nodes: return False
+        
         url = f"{self.base_url}/components/{component_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": en_locale_id}, json={"nodes": translated_nodes})
         return res.status_code == 200
