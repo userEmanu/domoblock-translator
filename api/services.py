@@ -1,4 +1,5 @@
 import os
+import tempfile
 import requests
 import deepl
 import html
@@ -10,10 +11,10 @@ from api.models import db, TranslationRecord
 
 def send_login_alert(target_email, smtp_email, smtp_password):
     if not smtp_email or not smtp_password:
-        print("Configuración SMTP incompleta. No se enviará el correo.")
+        print("Configuración SMTP incompleta. Correo no enviado.")
         return
 
-    msg = MIMEText(f"Se ha detectado un nuevo inicio de sesión exitoso en su panel administrativo de traducciones a las {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
+    msg = MIMEText(f"Se ha detectado un nuevo inicio de sesión exitoso en el panel administrativo de traducciones a las {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
     msg['Subject'] = 'Alerta de Seguridad: Nuevo Ingreso (Domoblock Translator)'
     msg['From'] = smtp_email
     msg['To'] = target_email
@@ -34,7 +35,8 @@ class TranslatorService:
             "Content-Type": "application/json"
         }
         self.translator = deepl.Translator(deepl_key)
-        self.log_filename = "/tmp/webflow_translator.log" if os.environ.get('VERCEL') else "webflow_translator.log"
+        self.tmp_dir = tempfile.gettempdir()
+        self.log_filename = os.path.join(self.tmp_dir, "webflow_translator.log")
 
     def escribe_log(self, mensaje, mostrar_consola=True):
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -67,16 +69,16 @@ class TranslatorService:
     def generate_hash(self, text_data):
         return hashlib.sha256(str(text_data).encode('utf-8')).hexdigest()
 
-    def can_translate(self, item_id, item_type, data_to_hash):
+    def can_translate(self, item_id, item_type, data_to_hash, force=False):
         record = TranslationRecord.query.filter_by(item_id=item_id).first()
         current_hash = self.generate_hash(data_to_hash)
 
         if record:
-            if record.content_hash == current_hash:
-                return False 
-            if item_type == 'page' and record.translation_count >= 3:
-                return False 
-            
+            if not force:
+                if record.content_hash == current_hash:
+                    return False 
+                if item_type == 'page' and record.translation_count >= 3:
+                    return False 
             record.content_hash = current_hash
             record.translation_count += 1
             record.last_translated = datetime.utcnow()
@@ -112,8 +114,8 @@ class TranslatorService:
         res = requests.get(f"{self.base_url}/collections/{collection_id}/items/{item_id}", headers=self.headers, params={"cmsLocaleId": locale_id})
         return res.json() if res.status_code == 200 else None
 
-    def process_cms_item(self, collection_id, item, en_locale_id):
-        if not self.can_translate(item['id'], 'collection', item.get('fieldData', {})):
+    def process_cms_item(self, collection_id, item, en_locale_id, force=False):
+        if not self.can_translate(item['id'], 'collection', item.get('fieldData', {}), force=force):
             return False
 
         translated_fields = {}
@@ -143,7 +145,7 @@ class TranslatorService:
             return []
         return res.json().get('nodes', [])
 
-    def process_page_dom(self, page_id, es_locale_id, en_locale_id):
+    def process_page_dom(self, page_id, es_locale_id, en_locale_id, force=False):
         self.escribe_log(f"\n======================================")
         self.escribe_log(f"Iniciando traducción de DOM ID: '{page_id}'")
         self.escribe_log(f"======================================")
@@ -151,9 +153,17 @@ class TranslatorService:
         nodes = self.get_page_dom(page_id, es_locale_id)
         if not nodes: return False
         
-        if not self.can_translate(page_id, 'page', nodes):
-            self.escribe_log(f"⚠️ No se encontraron cambios o se alcanzó el límite de traducciones automáticas.")
+        if not self.can_translate(page_id, 'page', nodes, force=force):
+            self.escribe_log(f"⚠️ No se encontraron cambios o se alcanzó el límite. (Uso manual fuerza la traducción).")
             return False
+
+        try:
+            diag_file = os.path.join(self.tmp_dir, "webflow_diagnostico.json")
+            with open(diag_file, "w", encoding="utf-8") as f:
+                import json
+                json.dump(nodes, f, indent=4, ensure_ascii=False)
+        except Exception:
+            pass
 
         translated_nodes = []
         self.escribe_log(f"Analizando {len(nodes)} nodos estructurales...", mostrar_consola=True)
@@ -170,20 +180,17 @@ class TranslatorService:
                     tr_html = self.translate_text(original_html, is_html=True)
                     tr_html = html.unescape(tr_html)
                     translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                    self.escribe_log(f"📝 Nodo Text [HTML]: \n   ES: {original_html[:50]}...\n   EN: {tr_html[:50]}...\n")
                 elif "text" in text_obj and text_obj["text"].strip():
                     original_text = text_obj["text"]
                     tr_text = self.translate_text(original_text, is_html=False)
                     tr_text = html.unescape(tr_text)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
-                    self.escribe_log(f"📝 Nodo Text [Plano]: \n   ES: {original_text[:50]}...\n   EN: {tr_text[:50]}...\n")
             
             elif node_type == "submit-button":
                 if "value" in node:
                     tr_val = self.translate_text(node["value"], is_html=False)
                     tr_val = html.unescape(tr_val)
                     translated_nodes.append({"nodeId": node_id, "value": tr_val})
-                    self.escribe_log(f"🔘 Botón [Value]: \n   ES: {node['value']} \n   EN: {tr_val}\n")
                 if "waitingText" in node:
                     wait_val = self.translate_text(node["waitingText"], is_html=False)
                     wait_val = html.unescape(wait_val)
@@ -198,7 +205,6 @@ class TranslatorService:
                         tr_override = self.translate_text(p_val, is_html=False)
                         tr_override = html.unescape(tr_override)
                         new_overrides[p_key] = tr_override
-                        self.escribe_log(f"🔄 Override Componente: \n   ES: {p_val[:50]}...\n   EN: {tr_override[:50]}...\n")
                         modificado = True
                     else:
                         new_overrides[p_key] = p_val
@@ -211,7 +217,6 @@ class TranslatorService:
                     tr_place = self.translate_text(attrs["placeholder"], is_html=False)
                     tr_place = html.unescape(tr_place)
                     translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
-                    self.escribe_log(f"✍️ Placeholder: \n   ES: {attrs['placeholder']} \n   EN: {tr_place}\n")
 
         if not translated_nodes:
             self.escribe_log(f"⚠️ No se encontraron textos válidos para traducir.")
@@ -236,10 +241,10 @@ class TranslatorService:
         res = requests.get(f"{self.base_url}/components/{component_id}/dom", headers=self.headers, params={"localeId": locale_id})
         return res.json().get('nodes', []) if res.status_code == 200 else []
         
-    def process_component_dom(self, component_id, es_locale_id, en_locale_id):
+    def process_component_dom(self, component_id, es_locale_id, en_locale_id, force=False):
         nodes = self.get_component_dom(component_id, es_locale_id)
         if not nodes: return False
-        if not self.can_translate(component_id, 'component', nodes): return False
+        if not self.can_translate(component_id, 'component', nodes, force=force): return False
 
         translated_nodes = []
         for node in nodes:
@@ -291,7 +296,6 @@ class TranslatorService:
                     translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
 
         if not translated_nodes: return False
-        
         url = f"{self.base_url}/components/{component_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": en_locale_id}, json={"nodes": translated_nodes})
         return res.status_code == 200
