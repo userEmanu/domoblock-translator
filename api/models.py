@@ -20,6 +20,7 @@ class Settings(db.Model):
     deepl_api_key = db.Column(db.String(256))
     webflow_token = db.Column(db.String(256))
     site_id = db.Column(db.String(100))
+    webflow_webhook_secret = db.Column(db.String(256)) # NUEVO: Para la seguridad del Webhook
     admin_email = db.Column(db.String(120), default="emanueel031@gmail.com")
 
 class TranslationRecord(db.Model):
