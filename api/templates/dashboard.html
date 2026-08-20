@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
-<h2><i class="fas fa-tachometer-alt"></i> Dashboard General</h2>
+<h2><i class="fas fa-tachometer-alt"></i> Dashboard y Configuración</h2>
 
 <div class="card">
     <h3 style="margin-top: 0;"><i class="fas fa-chart-line"></i> Consumo de DeepL</h3>
     <p style="font-size: 1.2em; font-weight: bold; color: #86efac;">{{ usage }}</p>
-    <p class="text-sm"><i class="fas fa-clock"></i> Hora local del Servidor: {{ current_time }}</p>
+    <p class="text-sm"><i class="fas fa-clock"></i> Hora local del Servidor (Colombia): {{ current_time }}</p>
 </div>
 
 <div class="card" style="border-left-color: #f59e0b;">
-    <h3 style="margin-top: 0;"><i class="fas fa-info-circle"></i> ¿Cómo funcionan las Automatizaciones?</h3>
+    <h3 style="margin-top: 0;"><i class="fas fa-info-circle"></i> Guía de Automatizaciones</h3>
     <ul class="text-sm" style="line-height: 1.6;">
-        <li><strong>CRON (Por Tiempo):</strong> Se ejecuta todos los días a las <strong>00:00 UTC (7:00 PM Colombia)</strong>. El sistema verificará tus reglas y solo traducirá si han pasado los "X" días que le configuraste de frecuencia.</li>
-        <li><strong>Webhooks (Por Acción):</strong> En Webflow ve a Site Settings > Integrations > Webhooks. Añade el Trigger <code>Collection Item Changed</code> y pon tu URL de Vercel terminada en <code>/api/webhook/webflow</code>. Así traducirá al instante cuando publiques.</li>
+        <li><strong>CRON (Por Tiempo):</strong> Se ejecuta automáticamente a las <strong>00:00 UTC (7:00 PM Colombia)</strong>.</li>
+        <li><strong>WEBHOOKS (Instantáneos):</strong> En Webflow ve a <em>Site Settings > Integrations > Webhooks</em>. Crea el webhook apuntando a <code>/api/webhook/webflow</code>. Pegue abajo el <strong>Secret Key</strong> para habilitar la firma de seguridad.</li>
     </ul>
 </div>
 
-<h3><i class="fas fa-key"></i> Credenciales del Sistema</h3>
+<h3><i class="fas fa-key"></i> Configuración de Servicios</h3>
 <form method="POST">
     <label>DeepL API Key:</label>
     <input type="password" name="deepl_key" value="{{ config.deepl_api_key or '' }}" required>
@@ -25,8 +25,24 @@
     <input type="password" name="webflow_token" value="{{ config.webflow_token or '' }}" required>
     
     <label>Webflow Site ID:</label>
-    <input type="text" name="site_id" value="{{ config.site_id or '' }}" placeholder="Ej: 6842f0d789a8945f6e85442c" required>
+    <input type="text" name="site_id" value="{{ config.site_id or '' }}" required>
+
+    <label style="color: #fca5a5;"><i class="fas fa-shield-alt"></i> Webflow Webhook Secret Key:</label>
+    <input type="password" name="webflow_webhook_secret" value="{{ config.webflow_webhook_secret or '' }}" placeholder="Clave secreta otorgada por Webflow">
     
-    <button type="submit"><i class="fas fa-save"></i> Guardar Credenciales</button>
+    <hr style="border: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+    <h4><i class="fas fa-envelope"></i> Alertas por Correo (SMTP)</h4>
+    <p class="text-sm">Configuración de la cuenta que enviará las alertas por seguridad.</p>
+
+    <label>Correo Electrónico a Notificar:</label>
+    <input type="email" name="admin_email" value="{{ config.admin_email or 'emanueel031@gmail.com' }}" required>
+
+    <label>Correo Emisor SMTP (Google):</label>
+    <input type="email" name="smtp_email" value="{{ config.smtp_email or 'supportitgv@gmail.com' }}" required>
+
+    <label>Contraseña de Aplicación SMTP:</label>
+    <input type="password" name="smtp_password" value="{{ config.smtp_password or '' }}" placeholder="Ingrese la contraseña de aplicación de 16 caracteres">
+
+    <button type="submit" style="margin-top: 15px;"><i class="fas fa-save"></i> Guardar Toda la Configuración</button>
 </form>
 {% endblock %}
