@@ -4,11 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Domoblock Translator</title>
-    <!-- Librerías de UI: FontAwesome & Animate.css -->
+    <!-- Librerías de UI, Iconos, jQuery y Select2 para los Buscadores -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
     <style>
-        /* Diseño Glassmorphism y Azul Oscuro Moderno */
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             margin: 0; padding: 20px; 
@@ -62,7 +65,35 @@
             outline: none; transition: border 0.3s;
         }
         input:focus, select:focus { border: 1px solid #38bdf8; }
-        select option { background: #1e293b; color: white; }
+        
+        /* Ajustes específicos para Select2 con Glassmorphism */
+        .select2-container--default .select2-selection--single {
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            height: 45px;
+            color: white;
+            border-radius: 8px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: white;
+            line-height: 45px;
+            padding-left: 12px;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 45px;
+        }
+        .select2-dropdown {
+            background-color: #1e293b;
+            color: white;
+            border: 1px solid #38bdf8;
+        }
+        .select2-search__field {
+            background-color: rgba(255,255,255,0.1) !important;
+            color: white !important;
+        }
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: #0ea5e9;
+        }
         
         table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; }
         th, td { padding: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); text-align: left; }
@@ -70,7 +101,6 @@
         
         .badge { padding: 6px 12px; border-radius: 20px; font-size: 0.85em; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);}
         .bg-success { background: #22c55e; } .bg-secondary { background: #64748b; }
-        
         .card { background: rgba(0,0,0,0.2); padding: 20px; border-radius: 10px; border-left: 4px solid #38bdf8; margin-bottom: 25px; }
         .text-sm { font-size: 0.9em; color: #cbd5e1; }
     </style>
@@ -80,10 +110,10 @@
     <div class="glass-panel animate__animated animate__fadeIn">
         {% if session.get('logged_in') %}
         <nav>
-            <a href="/dashboard"><i class="fas fa-cog"></i> Dashboard</a>
-            <a href="/manual"><i class="fas fa-hand-pointer"></i> Manual</a>
-            <a href="/auto"><i class="fas fa-bolt"></i> Automatización</a>
-            <a href="/logout" style="color: #fca5a5; margin-left: auto;"><i class="fas fa-sign-out-alt"></i> Salir</a>
+            <a href="/dashboard"><i class="fas fa-cog"></i> Configuración</a>
+            <a href="/manual"><i class="fas fa-hand-pointer"></i> Traducción Manual</a>
+            <a href="/auto"><i class="fas fa-bolt"></i> Automatizaciones</a>
+            <a href="/logout" style="color: #fca5a5; margin-left: auto;"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a>
         </nav>
         {% endif %}
         
@@ -97,5 +127,11 @@
 
         {% block content %}{% endblock %}
     </div>
+    <script>
+        // Inicializar todos los Select2 en las vistas que lo necesiten
+        $(document).ready(function() {
+            $('.select2-enable').select2({ width: '100%' });
+        });
+    </script>
 </body>
 </html>
