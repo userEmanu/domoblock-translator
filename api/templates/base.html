@@ -4,13 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Domoblock Translator</title>
-    <!-- Librerías de UI, Iconos, jQuery y Select2 para los Buscadores -->
+    <!-- Librerías de UI: FontAwesome, Animate.css, jQuery y Select2 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
@@ -31,7 +30,7 @@
             margin: auto; 
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); 
         }
-        h2, h3 { color: #38bdf8; font-weight: 600; }
+        h2, h3, h4 { color: #38bdf8; font-weight: 600; }
         nav { 
             background: rgba(0, 0, 0, 0.3); 
             padding: 15px 20px; 
@@ -66,7 +65,6 @@
         }
         input:focus, select:focus { border: 1px solid #38bdf8; }
         
-        /* Ajustes específicos para Select2 con Glassmorphism */
         .select2-container--default .select2-selection--single {
             background-color: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -128,7 +126,6 @@
         {% block content %}{% endblock %}
     </div>
     <script>
-        // Inicializar todos los Select2 en las vistas que lo necesiten
         $(document).ready(function() {
             $('.select2-enable').select2({ width: '100%' });
         });
