@@ -180,17 +180,20 @@ class TranslatorService:
                     tr_html = self.translate_text(original_html, is_html=True)
                     tr_html = html.unescape(tr_html)
                     translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                    self.escribe_log(f"📝 Nodo Text [HTML]: \n   ES: {original_html[:50]}...\n   EN: {tr_html[:50]}...\n")
                 elif "text" in text_obj and text_obj["text"].strip():
                     original_text = text_obj["text"]
                     tr_text = self.translate_text(original_text, is_html=False)
                     tr_text = html.unescape(tr_text)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
+                    self.escribe_log(f"📝 Nodo Text [Plano]: \n   ES: {original_text[:50]}...\n   EN: {tr_text[:50]}...\n")
             
             elif node_type == "submit-button":
                 if "value" in node:
                     tr_val = self.translate_text(node["value"], is_html=False)
                     tr_val = html.unescape(tr_val)
                     translated_nodes.append({"nodeId": node_id, "value": tr_val})
+                    self.escribe_log(f"🔘 Botón [Value]: \n   ES: {node['value']} \n   EN: {tr_val}\n")
                 if "waitingText" in node:
                     wait_val = self.translate_text(node["waitingText"], is_html=False)
                     wait_val = html.unescape(wait_val)
@@ -205,6 +208,7 @@ class TranslatorService:
                         tr_override = self.translate_text(p_val, is_html=False)
                         tr_override = html.unescape(tr_override)
                         new_overrides[p_key] = tr_override
+                        self.escribe_log(f"🔄 Override Componente: \n   ES: {p_val[:50]}...\n   EN: {tr_override[:50]}...\n")
                         modificado = True
                     else:
                         new_overrides[p_key] = p_val
@@ -217,6 +221,7 @@ class TranslatorService:
                     tr_place = self.translate_text(attrs["placeholder"], is_html=False)
                     tr_place = html.unescape(tr_place)
                     translated_nodes.append({"nodeId": node_id, "placeholder": tr_place})
+                    self.escribe_log(f"✍️ Placeholder: \n   ES: {attrs['placeholder']} \n   EN: {tr_place}\n")
 
         if not translated_nodes:
             self.escribe_log(f"⚠️ No se encontraron textos válidos para traducir.")
