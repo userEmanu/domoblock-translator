@@ -34,7 +34,7 @@ def login():
         r_result = requests.post(verify_url, data={'secret': RECAPTCHA_SECRET, 'response': recaptcha_response}).json()
 
         if not r_result.get('success') or r_result.get('score', 0) < 0.5:
-            flash("Verificación reCAPTCHA fallida o comportamiento de Bot detectado.", "danger")
+            flash("Verificación reCAPTCHA fallida o comportamiento sospechoso detectado.", "danger")
             return render_template('login.html')
 
         user = User.query.filter_by(username=username).first()
@@ -283,7 +283,6 @@ def webflow_webhook():
     translator, config = get_translator()
     if not translator: return jsonify({"status": "No config"}), 200
 
-    # SEGURIDAD WEBHOOK (Validación Criptográfica HMAC-SHA256)
     if config.webflow_webhook_secret:
         signature = request.headers.get('x-webflow-signature')
         timestamp = request.headers.get('x-webflow-timestamp')
@@ -296,7 +295,7 @@ def webflow_webhook():
             ).hexdigest()
             
             if not hmac.compare_digest(expected_sig, signature):
-                return jsonify({"error": "Firma inválida. Posible ataque."}), 401
+                return jsonify({"error": "Firma inválida."}), 401
 
     data = request.json
     if not data: return jsonify({"status": "No data"}), 400
