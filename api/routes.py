@@ -34,7 +34,7 @@ def login():
         r_result = requests.post(verify_url, data={'secret': RECAPTCHA_SECRET, 'response': recaptcha_response}).json()
 
         if not r_result.get('success') or r_result.get('score', 0) < 0.5:
-            flash("Verificación reCAPTCHA fallida o comportamiento sospechoso detectado.", "danger")
+            flash("Verificación reCAPTCHA fallida o comportamiento de Bot detectado.", "danger")
             return render_template('login.html')
 
         user = User.query.filter_by(username=username).first()
@@ -128,31 +128,31 @@ def manual_translate():
         es_id, en_id = es_loc['id'], en_loc['id']
         if target_id == 'all':
             for page in translator.get_pages(config.site_id):
-                if translator.process_page_dom(page['id'], es_id, en_id): processed += 1
+                if translator.process_page_dom(page['id'], es_id, en_id, force=True): processed += 1
         else:
-            if translator.process_page_dom(target_id, es_id, en_id): processed += 1
+            if translator.process_page_dom(target_id, es_id, en_id, force=True): processed += 1
 
     elif target_type == 'collection':
         es_id, en_id = es_loc['cmsLocaleId'], en_loc['cmsLocaleId']
         if target_id == 'all':
             for col in translator.get_collections(config.site_id):
                 for item in translator.get_items(col['id'], es_id):
-                    if translator.process_cms_item(col['id'], item, en_id): processed += 1
+                    if translator.process_cms_item(col['id'], item, en_id, force=True): processed += 1
         else:
             if item_id == 'all':
                 for item in translator.get_items(target_id, es_id):
-                    if translator.process_cms_item(target_id, item, en_id): processed += 1
+                    if translator.process_cms_item(target_id, item, en_id, force=True): processed += 1
             else:
                 item = translator.get_single_item(target_id, item_id, es_id)
-                if item and translator.process_cms_item(target_id, item, en_id): processed += 1
+                if item and translator.process_cms_item(target_id, item, en_id, force=True): processed += 1
 
     elif target_type == 'component':
         es_id, en_id = es_loc['id'], en_loc['id']
         if target_id == 'all':
             for comp in translator.get_components(config.site_id):
-                if translator.process_component_dom(comp['id'], es_id, en_id): processed += 1
+                if translator.process_component_dom(comp['id'], es_id, en_id, force=True): processed += 1
         else:
-            if translator.process_component_dom(target_id, es_id, en_id): processed += 1
+            if translator.process_component_dom(target_id, es_id, en_id, force=True): processed += 1
 
     flash(f"Traducción manual finalizada. Nodos/Ítems procesados: {processed}", "success")
     return redirect(url_for('main.manual'))
@@ -283,6 +283,7 @@ def webflow_webhook():
     translator, config = get_translator()
     if not translator: return jsonify({"status": "No config"}), 200
 
+    # SEGURIDAD WEBHOOK (Validación Criptográfica HMAC-SHA256)
     if config.webflow_webhook_secret:
         signature = request.headers.get('x-webflow-signature')
         timestamp = request.headers.get('x-webflow-timestamp')
@@ -295,7 +296,7 @@ def webflow_webhook():
             ).hexdigest()
             
             if not hmac.compare_digest(expected_sig, signature):
-                return jsonify({"error": "Firma inválida."}), 401
+                return jsonify({"error": "Firma inválida. Posible ataque."}), 401
 
     data = request.json
     if not data: return jsonify({"status": "No data"}), 400
