@@ -24,11 +24,11 @@
         <label><i class="fas fa-file-alt"></i> Busque el Post / Ítem Específico:</label>
         <select name="item_id" id="item_id" class="select2-enable">
             <option value="all">⚡ Traducir TODOS los posts de esta colección</option>
-            <!-- Llenado vía AJAX -->
         </select>
     </div>
 
-    <button type="submit" id="submitBtn" style="width:100%; display:none; margin-top: 25px;"><i class="fas fa-language"></i> Ejecutar Traducción</button>
+    <button type="submit" id="submitBtn" style="width:100%; display:none; margin-top: 25px;"><i class="fas fa-language"></i> Ejecutar Traducción Forzada</button>
+    <p class="text-sm" style="color: #fca5a5; margin-top: 15px;"><i class="fas fa-exclamation-triangle"></i> Nota: Esta ejecución manual omite los límites de seguridad de consumo y sobreescribirá el contenido.</p>
 </form>
 
 <script>
@@ -52,7 +52,7 @@
             let option = new Option(item.name, item.id, false, false);
             select.append(option);
         });
-        select.trigger('change.select2'); // Refresca Select2 visualmente
+        select.trigger('change.select2');
     }
 
     $('#target_type').on('change', function() {
