@@ -29,35 +29,4 @@
         });
     });
 </script>
-{% endblock %}{% extends "base.html" %}
-{% block content %}
-<div style="max-width: 400px; margin: auto; text-align: center;">
-    <i class="fas fa-shield-alt fa-3x" style="color: #38bdf8; margin-bottom: 15px;"></i>
-    <h2>Acceso Seguro</h2>
-    <p class="text-sm">Panel Administrativo Domoblock</p>
-    
-    <form id="loginForm" method="POST" style="text-align: left; margin-top: 30px;">
-        <label><i class="fas fa-user"></i> Usuario:</label>
-        <input type="text" name="username" required>
-        
-        <label><i class="fas fa-lock"></i> Contraseña:</label>
-        <input type="password" name="password" required>
-        
-        <input type="hidden" name="g-recaptcha-response" id="g-recaptcha-response">
-        <button type="submit" style="width: 100%; margin-top: 15px;"><i class="fas fa-sign-in-alt"></i> Ingresar</button>
-    </form>
-</div>
-
-<script src="https://www.google.com/recaptcha/api.js?render=6Lcomo4tAAAAAEkZUr5V3mbz6ItnXZrSBiMfBk5Q"></script>
-<script>
-    document.getElementById('loginForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        grecaptcha.ready(function() {
-            grecaptcha.execute('6Lcomo4tAAAAAEkZUr5V3mbz6ItnXZrSBiMfBk5Q', {action: 'login'}).then(function(token) {
-                document.getElementById('g-recaptcha-response').value = token;
-                document.getElementById('loginForm').submit();
-            });
-        });
-    });
-</script>
 {% endblock %}
