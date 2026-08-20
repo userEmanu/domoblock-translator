@@ -3,6 +3,7 @@ import tempfile
 from flask import Flask
 from api.models import db
 from api.routes import main
+from sqlalchemy import inspect, text
 
 def create_app():
     app = Flask(__name__, template_folder='templates')
@@ -24,11 +25,34 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        
+        # --- AUTO MIGRACIÓN DE ESQUEMA ---
+        try:
+            inspector = inspect(db.engine)
+            if inspector.has_table('settings'):
+                columns = [col['name'] for col in inspector.get_columns('settings')]
+                with db.engine.connect() as conn:
+                    if 'webflow_webhook_secret' not in columns:
+                        conn.execute(text('ALTER TABLE settings ADD COLUMN webflow_webhook_secret VARCHAR(256)'))
+                    if 'smtp_email' not in columns:
+                        conn.execute(text('ALTER TABLE settings ADD COLUMN smtp_email VARCHAR(120)'))
+                    if 'smtp_password' not in columns:
+                        conn.execute(text('ALTER TABLE settings ADD COLUMN smtp_password VARCHAR(256)'))
+                    if 'admin_email' not in columns:
+                        conn.execute(text('ALTER TABLE settings ADD COLUMN admin_email VARCHAR(120)'))
+                    conn.commit()
+        except Exception as e:
+            print(f"Error en auto-migración de base de datos: {e}")
+
+        # Creación de usuario administrador primario
         from api.models import User
-        if not User.query.filter_by(username='admin').first():
-            user = User(username='admin')
-            user.set_password('AdminDomoblock2026*') 
-            db.session.add(user)
-            db.session.commit()
+        try:
+            if not User.query.filter_by(username='admin').first():
+                user = User(username='admin')
+                user.set_password('AdminDomoblock2026*') 
+                db.session.add(user)
+                db.session.commit()
+        except Exception:
+            pass
 
     return app
