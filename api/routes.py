@@ -18,9 +18,12 @@ def login_required(f):
     return wrapper
 
 def get_translator():
-    config = Settings.query.first()
-    if config and config.deepl_api_key and config.webflow_token and config.site_id:
-        return TranslatorService(config.webflow_token, config.deepl_api_key), config
+    try:
+        config = Settings.query.first()
+        if config and config.deepl_api_key and config.webflow_token and config.site_id:
+            return TranslatorService(config.webflow_token, config.deepl_api_key), config
+    except Exception as e:
+        print(f"Error accediendo a Settings: {e}")
     return None, None
 
 @main.route('/login', methods=['GET', 'POST'])
@@ -34,18 +37,21 @@ def login():
         r_result = requests.post(verify_url, data={'secret': RECAPTCHA_SECRET, 'response': recaptcha_response}).json()
 
         if not r_result.get('success') or r_result.get('score', 0) < 0.5:
-            flash("Verificación reCAPTCHA fallida o comportamiento sospechoso detectado.", "danger")
+            flash("Verificación reCAPTCHA fallida o comportamiento de Bot detectado.", "danger")
             return render_template('login.html')
 
-        user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password):
-            session['logged_in'] = True
-            config = Settings.query.first()
-            if config and config.admin_email and config.smtp_email and config.smtp_password:
-                send_login_alert(config.admin_email, config.smtp_email, config.smtp_password)
-            return redirect(url_for('main.dashboard'))
-        else:
-            flash("Credenciales incorrectas", "danger")
+        try:
+            user = User.query.filter_by(username=username).first()
+            if user and user.check_password(password):
+                session['logged_in'] = True
+                config = Settings.query.first()
+                if config and config.admin_email and config.smtp_email and config.smtp_password:
+                    send_login_alert(config.admin_email, config.smtp_email, config.smtp_password)
+                return redirect(url_for('main.dashboard'))
+            else:
+                flash("Credenciales incorrectas", "danger")
+        except Exception as e:
+            flash(f"Error de base de datos durante el login: {e}", "danger")
             
     return render_template('login.html')
 
@@ -68,7 +74,6 @@ def dashboard():
         config.deepl_api_key = request.form.get('deepl_key')
         config.webflow_token = request.form.get('webflow_token')
         config.site_id = request.form.get('site_id')
-        config.webflow_webhook_secret = request.form.get('webflow_webhook_secret')
         config.admin_email = request.form.get('admin_email')
         config.smtp_email = request.form.get('smtp_email')
         config.smtp_password = request.form.get('smtp_password')
@@ -173,6 +178,7 @@ def auto():
         target_id = request.form.get('target_id')
         target_type = request.form.get('target_type')
         trigger_type = request.form.get('trigger_type')
+        webhook_secret = request.form.get('webhook_secret')
         
         frequency_days = int(request.form.get('frequency_days', 3)) if trigger_type == 'cron' else 0
         modified_within_days = int(request.form.get('modified_within_days', 5)) if trigger_type == 'cron' else 0
@@ -196,7 +202,7 @@ def auto():
         new_rule = AutoRule(
             target_id=target_id, target_type=target_type, trigger_type=trigger_type, 
             frequency_days=frequency_days, modified_within_days=modified_within_days,
-            target_name=target_name, is_active=True
+            target_name=target_name, webhook_secret=webhook_secret, is_active=True
         )
         db.session.add(new_rule)
         db.session.commit()
@@ -283,19 +289,30 @@ def webflow_webhook():
     translator, config = get_translator()
     if not translator: return jsonify({"status": "No config"}), 200
 
-    if config.webflow_webhook_secret:
-        signature = request.headers.get('x-webflow-signature')
-        timestamp = request.headers.get('x-webflow-timestamp')
-        if signature and timestamp:
-            msg = f"{timestamp}:{request.get_data(as_text=True)}"
+    # VALIDACIÓN CRIPTOGRÁFICA SEGURA
+    signature = request.headers.get('x-webflow-signature')
+    timestamp = request.headers.get('x-webflow-timestamp')
+    
+    active_webhook_rules = AutoRule.query.filter_by(trigger_type='webhook', is_active=True).all()
+    secrets = set([r.webhook_secret for r in active_webhook_rules if r.webhook_secret])
+
+    if secrets and signature and timestamp:
+        msg = f"{timestamp}:{request.get_data(as_text=True)}"
+        is_valid = False
+        
+        for secret in secrets:
             expected_sig = hmac.new(
-                config.webflow_webhook_secret.encode('utf-8'),
+                secret.encode('utf-8'),
                 msg.encode('utf-8'),
                 hashlib.sha256
             ).hexdigest()
             
-            if not hmac.compare_digest(expected_sig, signature):
-                return jsonify({"error": "Firma inválida."}), 401
+            if hmac.compare_digest(expected_sig, signature):
+                is_valid = True
+                break
+                
+        if not is_valid:
+            return jsonify({"error": "Firma inválida. Posible ataque."}), 401
 
     data = request.json
     if not data: return jsonify({"status": "No data"}), 400
@@ -307,6 +324,7 @@ def webflow_webhook():
     collection_id = data.get('_cid')
     
     if collection_id and item_id:
+        # Evaluar la colección
         rule = AutoRule.query.filter_by(target_type='collection', trigger_type='webhook', is_active=True).filter((AutoRule.target_id == collection_id) | (AutoRule.target_id == 'all')).first()
         if rule:
             full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
