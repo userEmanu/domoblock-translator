@@ -379,11 +379,11 @@ def webflow_webhook():
 
         # 🔥 TODOS LOS TRIGGERS DE CMS SOPORTADOS
         if trigger_type in [
-            'collection-item-created', 
-            'collection-item-changed', 
-            'collection-item-published',
-            'collection-item-unpublished',
-            'collection-item-deleted'
+            'collection_item_created', 
+            'collection_item_changed', 
+            'collection_item_published',
+            'collection_item_unpublished',
+            'collection_item_deleted'
         ]:
             collection_id = data.get('collectionId') or data.get('_cid')
             item_id = data.get('itemId') or data.get('_id')
