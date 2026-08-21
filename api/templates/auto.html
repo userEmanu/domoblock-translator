@@ -134,13 +134,13 @@
                         {% endif %}
                     </td>
                     <td>
-                        <!-- 🔥 CORREGIDO: apunta a main.toggle_auto -->
+                        <!-- Botón Activar/Pausar -->
                         <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
                             <button type="submit" class="btn btn-sm {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}" title="Activar/Pausar">
                                 {% if rule.is_active %}⏸️{% else %}▶️{% endif %}
                             </button>
                         </form>
-                        <!-- 🔥 ELIMINAR -->
+                        <!-- Botón Eliminar -->
                         <form action="{{ url_for('main.delete_auto', id=rule.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Eliminar esta regla?');">
                             <button type="submit" class="btn btn-sm btn-danger" title="Eliminar">🗑️</button>
                         </form>
