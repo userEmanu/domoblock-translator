@@ -69,8 +69,7 @@ class TranslatorService:
     # 🔥 NUEVO: Publicar el sitio para que los cambios se reflejen
     def publish_site(self, site_id):
         url = f"{self.base_url}/sites/{site_id}/publish"
-        # Puedes especificar los locales a publicar, por defecto publica todos
-        payload = {"publishTo": ["*"]}  # Publica todos los locales
+        payload = {"publishTo": ["*"]}
         try:
             res = requests.post(url, headers=self.headers, json=payload)
             if res.status_code in [200, 202]:
@@ -87,23 +86,27 @@ class TranslatorService:
         return hashlib.sha256(str(text_data).encode('utf-8')).hexdigest()
 
     def can_translate(self, item_id, item_type, data_to_hash, force=False):
+        """Verifica si el contenido ha cambiado. Si force=True, siempre traduce."""
         if force:
+            # 🔥 Si es forzado, siempre traducir (sin límite ni verificación de cambios)
+            self.escribe_log(f"🔓 Traducción forzada para {item_id}. Ignorando caché y límites.")
             return True
 
         record = TranslationRecord.query.filter_by(item_id=item_id).first()
         current_hash = self.generate_hash(data_to_hash)
 
         if record:
+            # Si el hash no ha cambiado, no traducir
             if record.content_hash == current_hash:
                 self.escribe_log(f"⏭️ {item_id}: Sin cambios detectados. No se traduce.")
                 return False
-            if record.translation_count >= 3:
-                self.escribe_log(f"⏭️ {item_id}: Límite de 3 traducciones alcanzado.")
-                return False
+            # 🔥 ELIMINADO: Límite de 3 traducciones
+            # Actualizar registro
             record.content_hash = current_hash
             record.translation_count += 1
             record.last_translated = datetime.utcnow()
         else:
+            # Nuevo registro
             record = TranslationRecord(
                 item_id=item_id,
                 item_type=item_type,
@@ -147,6 +150,7 @@ class TranslatorService:
         return res.json() if res.status_code == 200 else None
 
     def process_cms_item(self, collection_id, item, en_locale_id, force=False):
+        """Traduce un solo item del CMS. force=True ignora el cache y límites."""
         if not self.can_translate(item['id'], 'collection', item.get('fieldData', {}), force=force):
             return False
 
@@ -190,6 +194,7 @@ class TranslatorService:
         return res.json().get('nodes', [])
 
     def process_page_dom(self, page_id, es_locale_id, en_locale_id, force=False):
+        """Traduce el DOM de una página. force=True ignora el cache y límites."""
         self.escribe_log(f"\n======================================")
         self.escribe_log(f"Iniciando traducción de DOM ID: '{page_id}'")
         self.escribe_log(f"======================================")
@@ -199,10 +204,12 @@ class TranslatorService:
             self.escribe_log(f"⚠️ No se encontraron nodos para la página {page_id}")
             return False
 
+        # Verificar si hay cambios (usando el hash de los nodos)
         if not self.can_translate(page_id, 'page', nodes, force=force):
             self.escribe_log(f"⏭️ Página {page_id}: Sin cambios o límite alcanzado.")
             return False
 
+        # Guardar diagnóstico
         try:
             diag_file = os.path.join(self.tmp_dir, "webflow_diagnostico.json")
             with open(diag_file, "w", encoding="utf-8") as f:
@@ -217,6 +224,7 @@ class TranslatorService:
             if not node_id:
                 continue
 
+            # Texto HTML
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 if "html" in text_obj and text_obj["html"].strip():
@@ -228,12 +236,14 @@ class TranslatorService:
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
                     self.escribe_log(f"📝 Texto traducido: {text_obj['text'][:50]}... ➜ {tr_text[:50]}...")
 
+            # Botones
             elif node_type == "submit-button":
                 if "value" in node:
                     translated_nodes.append({"nodeId": node_id, "value": self.translate_text(node["value"])})
                 if "waitingText" in node:
                     translated_nodes.append({"nodeId": node_id, "waitingText": self.translate_text(node["waitingText"])})
 
+            # Overrides de componentes
             elif "propertyOverrides" in node and isinstance(node["propertyOverrides"], dict):
                 overrides = node["propertyOverrides"]
                 new_overrides = {}
@@ -245,6 +255,7 @@ class TranslatorService:
                 if new_overrides != overrides:
                     translated_nodes.append({"nodeId": node_id, "propertyOverrides": new_overrides})
 
+            # Placeholders
             elif "attributes" in node and isinstance(node["attributes"], dict):
                 attrs = node["attributes"]
                 if "placeholder" in attrs and isinstance(attrs["placeholder"], str) and attrs["placeholder"].strip():
@@ -254,6 +265,7 @@ class TranslatorService:
             self.escribe_log(f"⚠️ No se encontraron textos para traducir en página {page_id}")
             return False
 
+        # Subir los nodos traducidos
         if self.update_page_dom(page_id, en_locale_id, translated_nodes):
             self.escribe_log(f"✅ Página {page_id} actualizada con {len(translated_nodes)} nodos traducidos.")
             return True
@@ -279,6 +291,7 @@ class TranslatorService:
         return res.json().get('nodes', [])
 
     def process_component_dom(self, component_id, es_locale_id, en_locale_id, force=False):
+        """Traduce el DOM de un componente."""
         self.escribe_log(f"\n======================================")
         self.escribe_log(f"Iniciando traducción de Componente ID: '{component_id}'")
         self.escribe_log(f"======================================")
