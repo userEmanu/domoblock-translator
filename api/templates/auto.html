@@ -1,136 +1,150 @@
 {% extends "base.html" %}
+
 {% block content %}
-<h2><i class="fas fa-bolt"></i> Reglas Automáticas y Búsqueda</h2>
-<p class="text-sm">Configure qué elementos deben traducirse por sí solos mediante buscadores avanzados. La clave de seguridad del Webhook se guarda por cada regla de manera independiente.</p>
 
-<form method="POST" class="card">
-    <label><i class="fas fa-layer-group"></i> ¿Qué tipo de recurso automatizará?</label>
-    <select name="target_type" id="auto_target_type" class="select2-enable" required>
-        <option value="page">Páginas Estáticas</option>
-        <option value="collection">Colecciones del CMS (Post Types)</option>
-    </select>
-    
-    <div style="margin-top: 20px;">
-        <label><i class="fas fa-bullseye"></i> Busque el Recurso Específico:</label>
-        <select name="target_id" id="auto_target_id" class="select2-enable" required>
-            <!-- Llenado por JS -->
-        </select>
-    </div>
+<h2>📋 Reglas Automáticas y Búsqueda</h2>
 
-    <div style="margin-top: 20px;">
-        <label><i class="fas fa-cogs"></i> Método de Ejecución (Trigger):</label>
-        <select name="trigger_type" id="trigger_type" class="select2-enable" required>
-            <option value="cron">Por Tiempo (Cron Job Serverless)</option>
-            <option value="webhook">Por Acción (Webhook Instantáneo al publicar)</option>
-        </select>
-    </div>
+<p>Configure qué elementos deben traducirse por sí solos mediante buscadores avanzados. La clave de seguridad del Webhook se guarda por cada regla de manera independiente.</p>
 
-    <div id="time_settings_group" style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 20px;">
-        <div style="flex: 1; min-width: 200px;">
-            <label><i class="fas fa-calendar-alt"></i> Frecuencia (Solo Cron):</label>
-            <select name="frequency_days" class="select2-enable">
-                <option value="1">Todos los días</option>
-                <option value="3" selected>Cada 3 días</option>
-                <option value="7">Cada 7 días</option>
-            </select>
+<form method="POST">
+    <div class="mb-3">
+        <label class="form-label">¿Qué tipo de recurso automatizará?</label>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="target_type" id="type_page" value="page" checked>
+            <label class="form-check-label" for="type_page">Páginas Estáticas</label>
         </div>
-        <div style="flex: 1; min-width: 200px;">
-            <label><i class="fas fa-filter"></i> Traducir Modificados en los últimos:</label>
-            <select name="modified_within_days" class="select2-enable">
-                <option value="3">3 días</option>
-                <option value="5" selected>5 días</option>
-                <option value="30">30 días</option>
-            </select>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="target_type" id="type_collection" value="collection">
+            <label class="form-check-label" for="type_collection">Colecciones del CMS (Post Types)</label>
         </div>
     </div>
 
-    <!-- CAMPO EXCLUSIVO PARA LA SECRET KEY DEL WEBHOOK -->
-    <div id="webhook_settings_group" style="display: none; margin-top: 20px;">
-        <label style="color: #fca5a5;"><i class="fas fa-shield-alt"></i> Webflow Webhook Secret Key (Seguridad):</label>
-        <input type="password" name="webhook_secret" placeholder="Pegue la clave de seguridad única que le otorgó Webflow al crear este Webhook">
-        <small class="text-sm" style="display:block; margin-top:-15px; margin-bottom:15px;">Al guardar, esta regla quedará protegida contra ataques externos.</small>
+    <div class="mb-3">
+        <label class="form-label">Busque el Recurso Específico:</label>
+        <select name="target_id" class="form-select" required>
+            <option value="all">⚠️ Automatizar TODOS los recursos</option>
+            {% if pages %}
+                <optgroup label="📄 Páginas">
+                {% for page in pages %}
+                    <option value="{{ page.id }}">{{ page.title }}</option>
+                {% endfor %}
+                </optgroup>
+            {% endif %}
+            {% if collections %}
+                <optgroup label="📦 Colecciones CMS">
+                {% for col in collections %}
+                    <option value="{{ col.id }}">{{ col.displayName }}</option>
+                {% endfor %}
+                </optgroup>
+            {% endif %}
+        </select>
+        <small class="text-muted">Selecciona un recurso específico o 'Todos' para automatizar todo.</small>
     </div>
-    
-    <button type="submit" style="width: 100%; margin-top: 25px;"><i class="fas fa-plus-circle"></i> Guardar Regla Automática</button>
+
+    <div class="mb-3">
+        <label class="form-label">Método de Ejecución (Trigger):</label>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="trigger_type" id="trigger_cron" value="cron">
+            <label class="form-check-label" for="trigger_cron">⏰ Por Tiempo (Cron Job Serverless)</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="radio" name="trigger_type" id="trigger_webhook" value="webhook" checked>
+            <label class="form-check-label" for="trigger_webhook">⚡ Por Acción (Webhook Instantáneo al publicar)</label>
+        </div>
+    </div>
+
+    <div class="mb-3" id="cron_options" style="display:none;">
+        <label class="form-label">Frecuencia (Solo Cron):</label>
+        <select name="frequency_days" class="form-select">
+            <option value="1">Todos los días</option>
+            <option value="3" selected>Cada 3 días</option>
+            <option value="7">Cada 7 días</option>
+        </select>
+        <label class="form-label mt-2">Traducir Modificados en los últimos:</label>
+        <select name="modified_within_days" class="form-select">
+            <option value="3">3 días</option>
+            <option value="5" selected>5 días</option>
+            <option value="30">30 días</option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Webflow Webhook Secret Key (Seguridad):</label>
+        <input type="text" name="webhook_secret" class="form-control" placeholder="Pegue la clave de seguridad única que le otorgó Webflow al crear este Webhook">
+        <small class="text-muted">Al guardar, esta regla quedará protegida contra ataques externos.</small>
+    </div>
+
+    <input type="hidden" name="target_name" value="Regla automática">
+
+    <button type="submit" class="btn btn-primary">💾 Guardar Regla Automática</button>
 </form>
 
-<h3><i class="fas fa-tasks"></i> Reglas Activas</h3>
-<div style="overflow-x:auto;">
-    <table>
-        <tr>
-            <th>Estado</th>
-            <th>Recurso Automático</th>
-            <th>Método</th>
-            <th>Condiciones</th>
-            <th>Acciones</th>
-        </tr>
+<hr>
+
+<h3>📌 Reglas Activas</h3>
+
+{% if rules %}
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Estado</th>
+                <th>Recurso</th>
+                <th>Automático</th>
+                <th>Método</th>
+                <th>Condiciones</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
         {% for rule in rules %}
-        <tr class="animate__animated animate__fadeIn">
-            <td>
-                {% if rule.is_active %}
-                    <span class="badge bg-success">ACTIVA</span>
-                {% else %}
-                    <span class="badge bg-secondary">PAUSADA</span>
-                {% endif %}
-            </td>
-            <td><strong>{{ rule.target_name }}</strong><br><small style="color:#94a3b8;">{{ rule.target_id }}</small></td>
-            <td>{{ 'Cron (Tiempo)' if rule.trigger_type == 'cron' else 'Webhook (Acción)' }}</td>
-            <td>
-                {% if rule.trigger_type == 'cron' %}
-                    <small>Cada: {{ rule.frequency_days }}d<br>Filtro: {{ rule.modified_within_days }}d</small>
-                {% else %}
-                    <small style="color: #38bdf8;"><i class="fas fa-bolt"></i> Instantáneo</small>
-                {% endif %}
-            </td>
-            <td>
-                <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
-                    <button type="submit" class="btn {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}" title="Pausar/Activar">
-                        <i class="fas {% if rule.is_active %}fa-pause{% else %}fa-play{% endif %}"></i>
-                    </button>
-                </form>
-                <form action="{{ url_for('main.delete_auto', id=rule.id) }}" method="POST" style="display:inline;">
-                    <button type="submit" class="btn btn-danger" title="Eliminar"><i class="fas fa-trash"></i></button>
-                </form>
-            </td>
-        </tr>
+            <tr>
+                <td>
+                    {% if rule.is_active %}
+                        <span class="badge bg-success">✅ ACTIVA</span>
+                    {% else %}
+                        <span class="badge bg-secondary">⏸️ PAUSADA</span>
+                    {% endif %}
+                </td>
+                <td>{{ rule.target_name }}</td>
+                <td><code>{{ rule.target_id }}</code></td>
+                <td>
+                    {% if rule.trigger_type == 'cron' %}
+                        ⏰ Cron (Tiempo)
+                    {% else %}
+                        ⚡ Webhook (Acción)
+                    {% endif %}
+                </td>
+                <td>
+                    {% if rule.trigger_type == 'cron' %}
+                        Cada: {{ rule.frequency_days }}d<br>
+                        Filtro: {{ rule.modified_within_days }}d
+                    {% else %}
+                        Instantáneo
+                    {% endif %}
+                </td>
+                <td>
+                    <!-- 🔥 CORREGIDO: Ahora apunta a 'main.toggle_auto' -->
+                    <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
+                        <button type="submit" class="btn btn-sm {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}">
+                            {% if rule.is_active %}⏸️ Pausar{% else %}▶️ Activar{% endif %}
+                        </button>
+                    </form>
+                </td>
+            </tr>
         {% endfor %}
+        </tbody>
     </table>
-</div>
+{% else %}
+    <div class="alert alert-info">No hay reglas configuradas aún. Crea una arriba.</div>
+{% endif %}
 
 <script>
-    const a_pages = [
-        {"id": "all", "name": "⚡ Automatizar TODAS las páginas"},
-        {% for p in pages %} {"id": "{{ p.id }}", "name": "{{ p.title|replace('"', '\\"') }}"}, {% endfor %}
-    ];
-    const a_collections = [
-        {"id": "all", "name": "⚡ Automatizar TODAS las colecciones CMS"},
-        {% for c in collections %} {"id": "{{ c.id }}", "name": "{{ c.displayName|replace('"', '\\"') }}"}, {% endfor %}
-    ];
-
-    function fillAutoOptions(dataArray) {
-        let select = $('#auto_target_id');
-        select.empty();
-        dataArray.forEach(item => {
-            select.append(new Option(item.name, item.id, false, false));
+    document.querySelectorAll('input[name="trigger_type"]').forEach(el => {
+        el.addEventListener('change', function() {
+            document.getElementById('cron_options').style.display = 
+                this.value === 'cron' ? 'block' : 'none';
         });
-        select.trigger('change.select2');
-    }
-
-    fillAutoOptions(a_pages); 
-
-    $('#auto_target_type').on('change', function() {
-        if ($(this).val() === 'page') fillAutoOptions(a_pages);
-        else fillAutoOptions(a_collections);
-    });
-
-    $('#trigger_type').on('change', function() {
-        if ($(this).val() === 'webhook') {
-            $('#time_settings_group').hide();
-            $('#webhook_settings_group').show();
-        } else {
-            $('#time_settings_group').show();
-            $('#webhook_settings_group').hide();
-        }
     });
 </script>
+
 {% endblock %}
