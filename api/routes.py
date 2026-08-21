@@ -2,6 +2,7 @@ import os
 import hmac
 import hashlib
 import time
+import json  # 🔥 IMPORTANTE: esto faltaba
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 import requests
