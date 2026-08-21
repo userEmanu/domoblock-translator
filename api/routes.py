@@ -302,7 +302,7 @@ def cron_translate():
     return jsonify({"status": "Cron finalizado con éxito", "items_traducidos": translated_count})
 
 # ==========================================
-# WEBHOOK PRINCIPAL - CON TODOS LOS TRIGGERS DE WEBFLOW
+# WEBHOOK PRINCIPAL - CORREGIDO CON GUIONES BAJOS
 # ==========================================
 
 @main.route('/api/webhook/webflow', methods=['POST'])
@@ -377,7 +377,7 @@ def webflow_webhook():
         trigger_type = data.get('triggerType')
         add_log(f"⚡ Trigger Type: {trigger_type}")
 
-        # 🔥 TODOS LOS TRIGGERS DE CMS SOPORTADOS
+        # 🔥 TRIGGERS DE WEBFLOW CON GUIONES BAJOS (formato real)
         if trigger_type in [
             'collection_item_created', 
             'collection_item_changed', 
@@ -385,8 +385,25 @@ def webflow_webhook():
             'collection_item_unpublished',
             'collection_item_deleted'
         ]:
+            # Extraer los IDs del payload (estructura diferente para este trigger)
+            collection_id = None
+            item_id = None
+            
+            # Intentar obtener de la estructura directa
             collection_id = data.get('collectionId') or data.get('_cid')
             item_id = data.get('itemId') or data.get('_id')
+            
+            # Si no están en la raíz, buscar dentro de 'payload'
+            if not collection_id or not item_id:
+                payload = data.get('payload', {})
+                items = payload.get('items', [])
+                if items and len(items) > 0:
+                    # Tomar el primer item (el que cambió)
+                    first_item = items[0]
+                    collection_id = first_item.get('collectionId')
+                    item_id = first_item.get('id')
+                    add_log(f"📦 Items extraídos del payload: {len(items)} items encontrados")
+            
             add_log(f"📂 Collection ID: {collection_id}, Item ID: {item_id}")
 
             if collection_id and item_id:
@@ -459,7 +476,7 @@ def webflow_webhook():
                 return jsonify({"status": "Faltan IDs"}), 200
 
         # --- CASO 2: Eventos de página ---
-        elif trigger_type in ['page-created', 'page-metadata-updated', 'page-deleted']:
+        elif trigger_type in ['page_created', 'page_metadata_updated', 'page_deleted']:
             page_id = data.get('pageId')
             add_log(f"📄 Page ID: {page_id}")
 
@@ -521,7 +538,7 @@ def webflow_webhook():
                 return jsonify({"status": "Falta page_id"}), 200
 
         # --- CASO 3: Publicación de sitio ---
-        elif trigger_type == 'site-publish':
+        elif trigger_type == 'site_publish':
             site_id = data.get('siteId')
             add_log(f"🌐 Site Publish: {site_id}")
             if site_id and site_id == config.site_id:
