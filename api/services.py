@@ -346,3 +346,31 @@ class TranslatorService:
         url = f"{self.base_url}/components/{component_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": locale_id}, json={"nodes": nodes})
         return res.status_code == 200
+
+
+    # ==========================================
+# FUNCIÓN PARA ENVIAR LOGS DE WEBHOOK POR CORREO
+# ==========================================
+
+def send_webhook_log(target_email, smtp_email, smtp_password, subject, body):
+    """
+    Envía un correo con el log detallado de un webhook.
+    """
+    if not smtp_email or not smtp_password or not target_email:
+        print("Configuración SMTP incompleta. Correo de log no enviado.")
+        return False
+
+    try:
+        msg = MIMEText(body, 'plain', 'utf-8')
+        msg['Subject'] = f"[Domoblock Translator] {subject}"
+        msg['From'] = smtp_email
+        msg['To'] = target_email
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(smtp_email, smtp_password)
+            server.send_message(msg)
+        print(f"✅ Correo de log enviado a {target_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Error enviando correo de log: {e}")
+        return False
