@@ -97,7 +97,7 @@ class TranslatorService:
     def publish_site(self, site_id):
         """Publica el sitio en Webflow para que los cambios se reflejen."""
         url = f"{self.base_url}/sites/{site_id}/publish"
-        payload = {"publishToWebflowSubdomain": True}  # <-- CORREGIDO
+        payload = {"publishToWebflowSubdomain": True}
         try:
             res = requests.post(url, headers=self.headers, json=payload)
             if res.status_code in [200, 202]:
