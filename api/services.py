@@ -25,6 +25,33 @@ def send_login_alert(target_email, smtp_email, smtp_password):
     except Exception as e:
         print(f"Error enviando correo de seguridad: {e}")
 
+# ==========================================
+# FUNCIÓN PARA ENVIAR LOGS DE WEBHOOK POR CORREO
+# ==========================================
+
+def send_webhook_log(target_email, smtp_email, smtp_password, subject, body):
+    """
+    Envía un correo con el log detallado de un webhook.
+    """
+    if not smtp_email or not smtp_password or not target_email:
+        print("Configuración SMTP incompleta. Correo de log no enviado.")
+        return False
+
+    try:
+        msg = MIMEText(body, 'plain', 'utf-8')
+        msg['Subject'] = f"[Domoblock Translator] {subject}"
+        msg['From'] = smtp_email
+        msg['To'] = target_email
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(smtp_email, smtp_password)
+            server.send_message(msg)
+        print(f"✅ Correo de log enviado a {target_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Error enviando correo de log: {e}")
+        return False
+
 class TranslatorService:
     def __init__(self, webflow_token, deepl_key):
         self.base_url = "https://api.webflow.com/v2"
@@ -66,11 +93,11 @@ class TranslatorService:
         en_locale = next((l for l in locales.get('secondary', []) if 'en' in l['tag'].lower()), None)
         return primary, en_locale
 
-    # ✅ NUEVO: Método para publicar el sitio
+    # Publicación corregida
     def publish_site(self, site_id):
         """Publica el sitio en Webflow para que los cambios se reflejen."""
         url = f"{self.base_url}/sites/{site_id}/publish"
-        payload = {"publishTo": ["*"]}  # Publica todos los locales
+        payload = {"publishToWebflowSubdomain": True}  # <-- CORREGIDO
         try:
             res = requests.post(url, headers=self.headers, json=payload)
             if res.status_code in [200, 202]:
@@ -87,24 +114,33 @@ class TranslatorService:
         return hashlib.sha256(str(text_data).encode('utf-8')).hexdigest()
 
     def can_translate(self, item_id, item_type, data_to_hash, force=False):
-        """Verifica si el contenido ha cambiado. Si force=True, siempre traduce."""
+        """
+        Verifica si se puede traducir.
+        - force=True: siempre permite (manual).
+        - force=False: aplica límite de 2 traducciones (automatizaciones).
+        """
         if force:
-            # ✅ Traducción forzada: ignora caché y límites
             self.escribe_log(f"🔓 Traducción forzada para {item_id}. Ignorando caché y límites.")
             return True
 
+        # 🔥 LÍMITE DE 2 TRADUCCIONES PARA AUTOMATIZACIONES
         record = TranslationRecord.query.filter_by(item_id=item_id).first()
+        if record and record.translation_count >= 2:
+            self.escribe_log(f"⛔ {item_id}: Límite de 2 traducciones alcanzado. No se traduce.")
+            return False
+
         current_hash = self.generate_hash(data_to_hash)
 
         if record:
             if record.content_hash == current_hash:
                 self.escribe_log(f"⏭️ {item_id}: Sin cambios detectados. No se traduce.")
                 return False
-            # ✅ Se eliminó el límite de 3 traducciones
+            # Actualizar registro
             record.content_hash = current_hash
             record.translation_count += 1
             record.last_translated = datetime.utcnow()
         else:
+            # Nuevo registro
             record = TranslationRecord(
                 item_id=item_id,
                 item_type=item_type,
@@ -144,12 +180,15 @@ class TranslatorService:
         return res.json().get('items', []) if res.status_code == 200 else []
 
     def get_single_item(self, collection_id, item_id, locale_id):
-        """Obtiene un solo ítem del CMS por su ID."""
         res = requests.get(f"{self.base_url}/collections/{collection_id}/items/{item_id}", headers=self.headers, params={"cmsLocaleId": locale_id})
         return res.json() if res.status_code == 200 else None
 
     def process_cms_item(self, collection_id, item, en_locale_id, force=False):
-        """Traduce un solo item del CMS. force=True ignora el caché y límites."""
+        """
+        Traduce un solo item del CMS.
+        - force=True: manual, ignora límite.
+        - force=False: automatización, respeta límite de 2.
+        """
         if not self.can_translate(item['id'], 'collection', item.get('fieldData', {}), force=force):
             return False
 
@@ -346,31 +385,3 @@ class TranslatorService:
         url = f"{self.base_url}/components/{component_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": locale_id}, json={"nodes": nodes})
         return res.status_code == 200
-
-
-    # ==========================================
-# FUNCIÓN PARA ENVIAR LOGS DE WEBHOOK POR CORREO
-# ==========================================
-
-def send_webhook_log(target_email, smtp_email, smtp_password, subject, body):
-    """
-    Envía un correo con el log detallado de un webhook.
-    """
-    if not smtp_email or not smtp_password or not target_email:
-        print("Configuración SMTP incompleta. Correo de log no enviado.")
-        return False
-
-    try:
-        msg = MIMEText(body, 'plain', 'utf-8')
-        msg['Subject'] = f"[Domoblock Translator] {subject}"
-        msg['From'] = smtp_email
-        msg['To'] = target_email
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(smtp_email, smtp_password)
-            server.send_message(msg)
-        print(f"✅ Correo de log enviado a {target_email}")
-        return True
-    except Exception as e:
-        print(f"❌ Error enviando correo de log: {e}")
-        return False
