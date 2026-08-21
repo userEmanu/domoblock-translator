@@ -2,7 +2,7 @@ import os
 import hmac
 import hashlib
 import time
-import json  # 🔥 IMPORTANTE: esto faltaba
+import json
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 import requests
@@ -302,7 +302,7 @@ def cron_translate():
     return jsonify({"status": "Cron finalizado con éxito", "items_traducidos": translated_count})
 
 # ==========================================
-# WEBHOOK PRINCIPAL - CON LOGS POR CORREO
+# WEBHOOK PRINCIPAL - CON TODOS LOS TRIGGERS DE WEBFLOW
 # ==========================================
 
 @main.route('/api/webhook/webflow', methods=['POST'])
@@ -366,7 +366,7 @@ def webflow_webhook():
             send_webhook_log(admin_email, smtp_email, smtp_password, "⚠️ Webhook Fallido - Sin Data", "\n".join(log_lines))
             return jsonify({"status": "No data"}), 400
 
-        add_log(f"📦 Payload recibido: {json.dumps(data, indent=2)}")
+        add_log(f"📦 Payload recibido: {json.dumps(data, indent=2)[:500]}...")  # Truncado para no saturar
 
         es_loc, en_loc = translator.get_locales(config.site_id)
         if not es_loc or not en_loc:
@@ -377,9 +377,14 @@ def webflow_webhook():
         trigger_type = data.get('triggerType')
         add_log(f"⚡ Trigger Type: {trigger_type}")
 
-        # --- CASO 1: Evento de CMS ---
-        if trigger_type in ['collection-item-created', 'collection-item-changed', 
-                            'collection-item-published', 'collection-item-unpublished']:
+        # 🔥 TODOS LOS TRIGGERS DE CMS SOPORTADOS
+        if trigger_type in [
+            'collection-item-created', 
+            'collection-item-changed', 
+            'collection-item-published',
+            'collection-item-unpublished',
+            'collection-item-deleted'
+        ]:
             collection_id = data.get('collectionId') or data.get('_cid')
             item_id = data.get('itemId') or data.get('_id')
             add_log(f"📂 Collection ID: {collection_id}, Item ID: {item_id}")
@@ -410,7 +415,6 @@ def webflow_webhook():
                             publish_result = translator.publish_site(config.site_id)
                             add_log(f"📤 Resultado de publicación: {publish_result}")
                             
-                            # Enviar correo con el log completo
                             send_webhook_log(
                                 admin_email, smtp_email, smtp_password,
                                 f"✅ Webhook Exitoso - Item {item_id} traducido",
@@ -454,7 +458,7 @@ def webflow_webhook():
                 )
                 return jsonify({"status": "Faltan IDs"}), 200
 
-        # --- CASO 2: Evento de página ---
+        # --- CASO 2: Eventos de página ---
         elif trigger_type in ['page-created', 'page-metadata-updated', 'page-deleted']:
             page_id = data.get('pageId')
             add_log(f"📄 Page ID: {page_id}")
