@@ -269,7 +269,7 @@ def cron_translate():
             if rule.target_id == 'all':
                 for col in translator.get_collections(config.site_id):
                     for item in translator.get_items(col['id'], es_id):
-                        if translator.process_cms_item(col['id'], item, en_id):
+                        if translator.process_cms_item(col['id'], item, en_id):  # force=False por defecto
                             translated_count += 1
             else:
                 for item in items:
@@ -302,7 +302,7 @@ def cron_translate():
     return jsonify({"status": "Cron finalizado con éxito", "items_traducidos": translated_count})
 
 # ==========================================
-# WEBHOOK PRINCIPAL - CORREGIDO CON GUIONES BAJOS
+# WEBHOOK PRINCIPAL - CON TODOS LOS TRIGGERS Y LÍMITE DE 2
 # ==========================================
 
 @main.route('/api/webhook/webflow', methods=['POST'])
@@ -366,7 +366,11 @@ def webflow_webhook():
             send_webhook_log(admin_email, smtp_email, smtp_password, "⚠️ Webhook Fallido - Sin Data", "\n".join(log_lines))
             return jsonify({"status": "No data"}), 400
 
-        add_log(f"📦 Payload recibido: {json.dumps(data, indent=2)[:500]}...")  # Truncado para no saturar
+        # Truncar payload para no saturar el correo
+        payload_str = json.dumps(data, indent=2)
+        if len(payload_str) > 500:
+            payload_str = payload_str[:500] + "... (truncado)"
+        add_log(f"📦 Payload recibido: {payload_str}")
 
         es_loc, en_loc = translator.get_locales(config.site_id)
         if not es_loc or not en_loc:
@@ -377,33 +381,25 @@ def webflow_webhook():
         trigger_type = data.get('triggerType')
         add_log(f"⚡ Trigger Type: {trigger_type}")
 
-        # 🔥 TRIGGERS DE WEBFLOW CON GUIONES BAJOS (formato real)
+        # 🔥 TODOS LOS TRIGGERS DE CMS SOPORTADOS (con límite de 2)
         if trigger_type in [
-            'collection_item_created', 
-            'collection_item_changed', 
-            'collection_item_published',
-            'collection_item_unpublished',
-            'collection_item_deleted'
+            'collection-item-created', 
+            'collection-item-changed', 
+            'collection-item-published',
+            'collection-item-unpublished',
+            'collection-item-deleted'
         ]:
-            # Extraer los IDs del payload (estructura diferente para este trigger)
-            collection_id = None
-            item_id = None
-            
-            # Intentar obtener de la estructura directa
+            # Extraer collectionId e itemId (pueden estar en diferentes lugares)
             collection_id = data.get('collectionId') or data.get('_cid')
-            item_id = data.get('itemId') or data.get('_id')
-            
-            # Si no están en la raíz, buscar dentro de 'payload'
-            if not collection_id or not item_id:
-                payload = data.get('payload', {})
-                items = payload.get('items', [])
-                if items and len(items) > 0:
-                    # Tomar el primer item (el que cambió)
-                    first_item = items[0]
-                    collection_id = first_item.get('collectionId')
-                    item_id = first_item.get('id')
-                    add_log(f"📦 Items extraídos del payload: {len(items)} items encontrados")
-            
+            # El itemId puede venir en data.get('itemId') o dentro de payload.items[0].id
+            if not collection_id and 'payload' in data and 'items' in data['payload'] and len(data['payload']['items']) > 0:
+                # A veces el payload trae lista de items, tomamos el primero
+                first_item = data['payload']['items'][0]
+                collection_id = first_item.get('collectionId')
+                item_id = first_item.get('id')
+            else:
+                item_id = data.get('itemId') or data.get('_id')
+
             add_log(f"📂 Collection ID: {collection_id}, Item ID: {item_id}")
 
             if collection_id and item_id:
@@ -422,10 +418,12 @@ def webflow_webhook():
 
                     full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
                     if full_item:
-                        add_log(f"📄 Item obtenido: {full_item.get('id')} - {full_item.get('fieldData', {}).get('name', 'Sin nombre')}")
-                        add_log(f"🔄 Traduciendo item con force=True...")
+                        item_name = full_item.get('fieldData', {}).get('name', 'Sin nombre')
+                        add_log(f"📄 Item obtenido: {item_id} - {item_name}")
+                        add_log(f"🔄 Traduciendo item (force=False, límite de 2)...")
                         
-                        success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'], force=True)
+                        # 🔥 IMPORTANTE: force=False (por defecto) para que respete el límite
+                        success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
                         if success:
                             add_log("✅ Item traducido correctamente")
                             add_log(f"🚀 Publicando sitio...")
@@ -443,13 +441,13 @@ def webflow_webhook():
                                 "publish": publish_result
                             }), 200
                         else:
-                            add_log("⚠️ El item no necesitaba traducción (sin cambios)")
+                            add_log("⚠️ El item no se tradujo (límite alcanzado o sin cambios)")
                             send_webhook_log(
                                 admin_email, smtp_email, smtp_password,
-                                f"ℹ️ Webhook - Item {item_id} sin cambios",
+                                f"ℹ️ Webhook - Item {item_id} no traducido",
                                 "\n".join(log_lines)
                             )
-                            return jsonify({"status": f"⏭️ Item {item_id} no necesitaba traducción"}), 200
+                            return jsonify({"status": f"⏭️ Item {item_id} no se tradujo (límite alcanzado o sin cambios)"}), 200
                     else:
                         add_log(f"❌ Item no encontrado: {item_id}")
                         send_webhook_log(
@@ -476,7 +474,7 @@ def webflow_webhook():
                 return jsonify({"status": "Faltan IDs"}), 200
 
         # --- CASO 2: Eventos de página ---
-        elif trigger_type in ['page_created', 'page_metadata_updated', 'page_deleted']:
+        elif trigger_type in ['page-created', 'page-metadata-updated', 'page-deleted']:
             page_id = data.get('pageId')
             add_log(f"📄 Page ID: {page_id}")
 
@@ -494,8 +492,8 @@ def webflow_webhook():
                     add_log(f"⏳ Esperando 2 segundos para que Webflow procese el cambio...")
                     time.sleep(2)
 
-                    add_log(f"🔄 Traduciendo página con force=True...")
-                    success = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'], force=True)
+                    add_log(f"🔄 Traduciendo página (force=False, límite de 2)...")
+                    success = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
                     if success:
                         add_log("✅ Página traducida correctamente")
                         add_log(f"🚀 Publicando sitio...")
@@ -513,13 +511,13 @@ def webflow_webhook():
                             "publish": publish_result
                         }), 200
                     else:
-                        add_log("⚠️ La página no necesitaba traducción (sin cambios)")
+                        add_log("⚠️ La página no se tradujo (límite alcanzado o sin cambios)")
                         send_webhook_log(
                             admin_email, smtp_email, smtp_password,
-                            f"ℹ️ Webhook - Página {page_id} sin cambios",
+                            f"ℹ️ Webhook - Página {page_id} no traducida",
                             "\n".join(log_lines)
                         )
-                        return jsonify({"status": f"⏭️ Página {page_id} no necesitaba traducción"}), 200
+                        return jsonify({"status": f"⏭️ Página {page_id} no se tradujo (límite alcanzado o sin cambios)"}), 200
                 else:
                     add_log(f"⏭️ No hay regla activa para page {page_id}")
                     send_webhook_log(
@@ -538,7 +536,7 @@ def webflow_webhook():
                 return jsonify({"status": "Falta page_id"}), 200
 
         # --- CASO 3: Publicación de sitio ---
-        elif trigger_type == 'site_publish':
+        elif trigger_type == 'site-publish':
             site_id = data.get('siteId')
             add_log(f"🌐 Site Publish: {site_id}")
             if site_id and site_id == config.site_id:
