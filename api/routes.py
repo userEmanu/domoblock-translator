@@ -8,11 +8,13 @@ from api.models import db, User, Settings, AutoRule
 from api.services import TranslatorService, send_login_alert
 
 main = Blueprint('main', __name__)
+
 RECAPTCHA_SECRET = '6Lcomo4tAAAAABXYSj-xbZdUSxE2CHfP_BtNeUGa'
 
 def login_required(f):
     def wrapper(*args, **kwargs):
-        if 'logged_in' not in session: return redirect(url_for('main.login'))
+        if 'logged_in' not in session:
+            return redirect(url_for('main.login'))
         return f(*args, **kwargs)
     wrapper.__name__ = f.__name__
     return wrapper
@@ -26,20 +28,21 @@ def get_translator():
         print(f"Error accediendo a Settings: {e}")
     return None, None
 
+# ==========================================
+# LOGIN Y DASHBOARD
+# ==========================================
+
 @main.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         recaptcha_response = request.form.get('g-recaptcha-response')
-
         verify_url = 'https://www.google.com/recaptcha/api/siteverify'
         r_result = requests.post(verify_url, data={'secret': RECAPTCHA_SECRET, 'response': recaptcha_response}).json()
-
         if not r_result.get('success') or r_result.get('score', 0) < 0.5:
             flash("Verificación reCAPTCHA fallida o comportamiento de Bot detectado.", "danger")
             return render_template('login.html')
-
         try:
             user = User.query.filter_by(username=username).first()
             if user and user.check_password(password):
@@ -52,7 +55,6 @@ def login():
                 flash("Credenciales incorrectas", "danger")
         except Exception as e:
             flash(f"Error de base de datos durante el login: {e}", "danger")
-            
     return render_template('login.html')
 
 @main.route('/logout')
@@ -69,7 +71,6 @@ def dashboard():
         config = Settings(admin_email="emanueel031@gmail.com", smtp_email="supportitgv@gmail.com")
         db.session.add(config)
         db.session.commit()
-
     if request.method == 'POST':
         config.deepl_api_key = request.form.get('deepl_key')
         config.webflow_token = request.form.get('webflow_token')
@@ -79,15 +80,12 @@ def dashboard():
         config.smtp_password = request.form.get('smtp_password')
         db.session.commit()
         flash("Configuración guardada exitosamente.", "success")
-
     usage = "API no configurada"
     translator, _ = get_translator()
     if translator:
         usage = translator.get_deepl_usage()
-
     utc_now = datetime.utcnow()
     colombia_time = utc_now - timedelta(hours=5)
-
     return render_template('dashboard.html', config=config, usage=usage, current_time=colombia_time.strftime('%Y-%m-%d %I:%M %p'))
 
 # ==========================================
@@ -101,7 +99,6 @@ def manual():
     if not translator:
         flash("Configure las APIs en el Dashboard primero.", "warning")
         return redirect(url_for('main.dashboard'))
-    
     pages = translator.get_pages(config.site_id)
     collections = translator.get_collections(config.site_id)
     components = translator.get_components(config.site_id)
@@ -111,7 +108,8 @@ def manual():
 @login_required
 def get_collection_items(collection_id):
     translator, config = get_translator()
-    if not translator: return jsonify([])
+    if not translator:
+        return jsonify([])
     es_loc, _ = translator.get_locales(config.site_id)
     items = translator.get_items(collection_id, es_loc['cmsLocaleId'])
     return jsonify([{'id': i['id'], 'name': i.get('fieldData', {}).get('name', 'Sin Nombre')} for i in items])
@@ -120,44 +118,50 @@ def get_collection_items(collection_id):
 @login_required
 def manual_translate():
     translator, config = get_translator()
-    if not translator: return redirect(url_for('main.manual'))
-
+    if not translator:
+        return redirect(url_for('main.manual'))
     es_loc, en_loc = translator.get_locales(config.site_id)
     target_type = request.form.get('target_type')
     target_id = request.form.get('target_id')
     item_id = request.form.get('item_id')
-
     processed = 0
 
     if target_type == 'page':
         es_id, en_id = es_loc['id'], en_loc['id']
         if target_id == 'all':
             for page in translator.get_pages(config.site_id):
-                if translator.process_page_dom(page['id'], es_id, en_id, force=True): processed += 1
+                if translator.process_page_dom(page['id'], es_id, en_id, force=True):
+                    processed += 1
         else:
-            if translator.process_page_dom(target_id, es_id, en_id, force=True): processed += 1
+            if translator.process_page_dom(target_id, es_id, en_id, force=True):
+                processed += 1
 
     elif target_type == 'collection':
         es_id, en_id = es_loc['cmsLocaleId'], en_loc['cmsLocaleId']
         if target_id == 'all':
             for col in translator.get_collections(config.site_id):
                 for item in translator.get_items(col['id'], es_id):
-                    if translator.process_cms_item(col['id'], item, en_id, force=True): processed += 1
+                    if translator.process_cms_item(col['id'], item, en_id, force=True):
+                        processed += 1
         else:
             if item_id == 'all':
                 for item in translator.get_items(target_id, es_id):
-                    if translator.process_cms_item(target_id, item, en_id, force=True): processed += 1
+                    if translator.process_cms_item(target_id, item, en_id, force=True):
+                        processed += 1
             else:
                 item = translator.get_single_item(target_id, item_id, es_id)
-                if item and translator.process_cms_item(target_id, item, en_id, force=True): processed += 1
+                if item and translator.process_cms_item(target_id, item, en_id, force=True):
+                    processed += 1
 
     elif target_type == 'component':
         es_id, en_id = es_loc['id'], en_loc['id']
         if target_id == 'all':
             for comp in translator.get_components(config.site_id):
-                if translator.process_component_dom(comp['id'], es_id, en_id, force=True): processed += 1
+                if translator.process_component_dom(comp['id'], es_id, en_id, force=True):
+                    processed += 1
         else:
-            if translator.process_component_dom(target_id, es_id, en_id, force=True): processed += 1
+            if translator.process_component_dom(target_id, es_id, en_id, force=True):
+                processed += 1
 
     flash(f"Traducción manual finalizada. Nodos/Ítems procesados: {processed}", "success")
     return redirect(url_for('main.manual'))
@@ -179,30 +183,19 @@ def auto():
         target_type = request.form.get('target_type')
         trigger_type = request.form.get('trigger_type')
         webhook_secret = request.form.get('webhook_secret')
-        
         frequency_days = int(request.form.get('frequency_days', 3)) if trigger_type == 'cron' else 0
         modified_within_days = int(request.form.get('modified_within_days', 5)) if trigger_type == 'cron' else 0
-        
-        if target_id == 'all':
-            target_name = f"Todas las {'Páginas' if target_type == 'page' else 'Colecciones'}"
-        else:
-            target_name = "Recurso Específico"
-            if target_type == 'page':
-                pages = translator.get_pages(config.site_id)
-                p = next((x for x in pages if x['id'] == target_id), None)
-                if p: target_name = p.get('title', 'Página')
-            else:
-                cols = translator.get_collections(config.site_id)
-                c = next((x for x in cols if x['id'] == target_id), None)
-                if c: target_name = c.get('displayName', 'Colección')
-
-        exists = AutoRule.query.filter_by(target_id=target_id, target_type=target_type).first()
-        if exists: db.session.delete(exists)
+        target_name = request.form.get('target_name', 'Sin nombre')
 
         new_rule = AutoRule(
-            target_id=target_id, target_type=target_type, trigger_type=trigger_type, 
-            frequency_days=frequency_days, modified_within_days=modified_within_days,
-            target_name=target_name, webhook_secret=webhook_secret, is_active=True
+            target_id=target_id,
+            target_type=target_type,
+            trigger_type=trigger_type,
+            frequency_days=frequency_days,
+            modified_within_days=modified_within_days,
+            target_name=target_name,
+            webhook_secret=webhook_secret,
+            is_active=True
         )
         db.session.add(new_rule)
         db.session.commit()
@@ -213,24 +206,6 @@ def auto():
     collections = translator.get_collections(config.site_id)
     return render_template('auto.html', rules=rules, pages=pages, collections=collections)
 
-@main.route('/auto/toggle/<int:id>', methods=['POST'])
-@login_required
-def toggle_auto(id):
-    rule = AutoRule.query.get_or_404(id)
-    rule.is_active = not rule.is_active
-    db.session.commit()
-    flash(f"Regla {'Activada' if rule.is_active else 'Desactivada'} correctamente.", "success")
-    return redirect(url_for('main.auto'))
-
-@main.route('/auto/delete/<int:id>', methods=['POST'])
-@login_required
-def delete_auto(id):
-    rule = AutoRule.query.get_or_404(id)
-    db.session.delete(rule)
-    db.session.commit()
-    flash("Regla eliminada.", "success")
-    return redirect(url_for('main.auto'))
-
 # ==========================================
 # ENDPOINTS AUTOMÁTICOS (CRON Y WEBHOOKS)
 # ==========================================
@@ -238,118 +213,177 @@ def delete_auto(id):
 @main.route('/api/cron/translate', methods=['GET', 'POST'])
 def cron_translate():
     auth_header = request.headers.get('Authorization')
-    expected_secret = f"Bearer {os.environ.get('CRON_SECRET', 'dev_secret')}"
-    if auth_header != expected_secret and os.environ.get('FLASK_ENV') != 'development':
-        return jsonify({'error': 'No autorizado'}), 401
+    expected_secret = f"Bearer {os.environ.get('CRON_SECRET', 'default_cron_secret')}"
+    if auth_header != expected_secret:
+        return jsonify({"error": "No autorizado"}), 401
 
     translator, config = get_translator()
-    if not translator: return jsonify({"status": "no config"}), 200
+    if not translator:
+        return jsonify({"error": "Translator no configurado"}), 500
 
     es_loc, en_loc = translator.get_locales(config.site_id)
-    if not es_loc or not en_loc: return jsonify({"status": "locales error"}), 200
+    if not es_loc or not en_loc:
+        return jsonify({"error": "Locales no configurados"}), 500
 
-    rules = AutoRule.query.filter_by(is_active=True, trigger_type='cron').all()
+    cron_rules = AutoRule.query.filter_by(trigger_type='cron', is_active=True).all()
     now = datetime.utcnow()
     translated_count = 0
 
-    for rule in rules:
-        if (now - rule.last_run).days < rule.frequency_days:
-            continue
-            
+    for rule in cron_rules:
         if rule.target_type == 'collection':
-            cols_to_check = [rule.target_id] if rule.target_id != 'all' else [c['id'] for c in translator.get_collections(config.site_id)]
-            for cid in cols_to_check:
-                for item in translator.get_items(cid, es_loc['cmsLocaleId']):
-                    date_str = item.get('updatedOn', '')[:19]
-                    if date_str:
-                        updated_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-                        if (now - updated_obj).days <= rule.modified_within_days:
-                            if translator.process_cms_item(cid, item, en_loc['cmsLocaleId']):
-                                translated_count += 1
+            es_id, en_id = es_loc['cmsLocaleId'], en_loc['cmsLocaleId']
+            items = translator.get_items(rule.target_id, es_id) if rule.target_id != 'all' else []
+            if rule.target_id == 'all':
+                for col in translator.get_collections(config.site_id):
+                    for item in translator.get_items(col['id'], es_id):
+                        if translator.process_cms_item(col['id'], item, en_id):
+                            translated_count += 1
+            else:
+                for item in items:
+                    if translator.process_cms_item(rule.target_id, item, en_id):
+                        translated_count += 1
 
         elif rule.target_type == 'page':
-            pages_to_check = [rule.target_id] if rule.target_id != 'all' else [p['id'] for p in translator.get_pages(config.site_id)]
-            for pid in pages_to_check:
-                page_data = next((p for p in translator.get_pages(config.site_id) if p['id'] == pid), None)
-                if page_data:
-                    date_str = page_data.get('lastUpdated', '')[:19]
-                    if date_str:
-                        updated_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-                        if (now - updated_obj).days <= rule.modified_within_days:
-                            if translator.process_page_dom(pid, es_loc['id'], en_loc['id']):
-                                translated_count += 1
-                            
+            es_id, en_id = es_loc['id'], en_loc['id']
+            if rule.target_id == 'all':
+                for page in translator.get_pages(config.site_id):
+                    if translator.process_page_dom(page['id'], es_id, en_id):
+                        translated_count += 1
+            else:
+                if translator.process_page_dom(rule.target_id, es_id, en_id):
+                    translated_count += 1
+
+        elif rule.target_type == 'component':
+            es_id, en_id = es_loc['id'], en_loc['id']
+            if rule.target_id == 'all':
+                for comp in translator.get_components(config.site_id):
+                    if translator.process_component_dom(comp['id'], es_id, en_id):
+                        translated_count += 1
+            else:
+                if translator.process_component_dom(rule.target_id, es_id, en_id):
+                    translated_count += 1
+
         rule.last_run = now
         db.session.commit()
 
     return jsonify({"status": "Cron finalizado con éxito", "items_traducidos": translated_count})
 
+# ==========================================
+# WEBHOOK PRINCIPAL - SOPORTE PARA MÚLTIPLES TRIGGERS
+# ==========================================
+
 @main.route('/api/webhook/webflow', methods=['POST'])
 def webflow_webhook():
     translator, config = get_translator()
-    if not translator: return jsonify({"status": "No config"}), 200
+    if not translator:
+        return jsonify({"status": "No config"}), 200
 
-    # VALIDACIÓN CRIPTOGRÁFICA SEGURA
+    # --- VALIDACIÓN CRIPTOGRÁFICA ---
     signature = request.headers.get('x-webflow-signature')
     timestamp = request.headers.get('x-webflow-timestamp')
-    
     active_webhook_rules = AutoRule.query.filter_by(trigger_type='webhook', is_active=True).all()
     secrets = set([r.webhook_secret for r in active_webhook_rules if r.webhook_secret])
 
     if secrets and signature and timestamp:
         msg = f"{timestamp}:{request.get_data(as_text=True)}"
         is_valid = False
-        
         for secret in secrets:
             expected_sig = hmac.new(
                 secret.encode('utf-8'),
                 msg.encode('utf-8'),
                 hashlib.sha256
             ).hexdigest()
-            
             if hmac.compare_digest(expected_sig, signature):
                 is_valid = True
                 break
-                
         if not is_valid:
             return jsonify({"error": "Firma inválida. Posible ataque."}), 401
 
     data = request.json
-    if not data: return jsonify({"status": "No data"}), 400
+    if not data:
+        return jsonify({"status": "No data"}), 400
 
     es_loc, en_loc = translator.get_locales(config.site_id)
-    if not es_loc: return jsonify({"status": "locales error"}), 200
+    if not es_loc or not en_loc:
+        return jsonify({"status": "locales error"}), 200
 
-    item_id = data.get('_id')
-    collection_id = data.get('_cid')
-    
-    if collection_id and item_id:
-        # Evaluar la colección
-        rule = AutoRule.query.filter_by(target_type='collection', trigger_type='webhook', is_active=True).filter((AutoRule.target_id == collection_id) | (AutoRule.target_id == 'all')).first()
-        if rule:
-            full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
-            if full_item:
-                translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
-                return jsonify({"status": "CMS Item procesado vía Webhook"})
+    trigger_type = data.get('triggerType')
+    print(f"📨 Webhook recibido: triggerType={trigger_type}")
 
-    elif data.get('siteId') == config.site_id:
-        page_id = data.get('pageId')
-        page_rules = AutoRule.query.filter_by(target_type='page', trigger_type='webhook', is_active=True).all()
-        processed = 0
-        
-        if page_id:
-            for rule in page_rules:
-                if rule.target_id == 'all' or rule.target_id == page_id:
-                    if translator.process_page_dom(page_id, es_loc['id'], en_loc['id']):
-                        processed += 1
-        else:
-            for rule in page_rules:
-                if rule.target_id == 'all':
-                    for page in translator.get_pages(config.site_id):
-                        if translator.process_page_dom(page['id'], es_loc['id'], en_loc['id']): processed += 1
+    # --- CASO 1: Evento de CMS (item creado, cambiado, publicado, etc.) ---
+    if trigger_type in ['collection-item-created', 'collection-item-changed', 
+                        'collection-item-published', 'collection-item-unpublished']:
+        collection_id = data.get('collectionId') or data.get('_cid')
+        item_id = data.get('itemId') or data.get('_id')
+
+        if collection_id and item_id:
+            # Buscar regla que coincida con esta colección
+            rule = AutoRule.query.filter_by(
+                target_type='collection', 
+                trigger_type='webhook', 
+                is_active=True
+            ).filter(
+                (AutoRule.target_id == collection_id) | (AutoRule.target_id == 'all')
+            ).first()
+
+            if rule:
+                full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
+                if full_item:
+                    # Traducir SOLO este item (force=False por defecto)
+                    if translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId']):
+                        return jsonify({"status": f"✅ Item {item_id} traducido correctamente"}), 200
+                    else:
+                        return jsonify({"status": f"⏭️ Item {item_id} no necesitaba traducción (sin cambios o límite alcanzado)"}), 200
                 else:
-                    if translator.process_page_dom(rule.target_id, es_loc['id'], en_loc['id']): processed += 1
+                    return jsonify({"error": "Item no encontrado"}), 404
+            else:
+                return jsonify({"status": f"⏭️ No hay regla activa para collection {collection_id}"}), 200
 
-        return jsonify({"status": f"Site Publish detectado. {processed} páginas procesadas."})
+    # --- CASO 2: Evento de página (creada o metadata actualizada) ---
+    elif trigger_type in ['page-created', 'page-metadata-updated']:
+        page_id = data.get('pageId')
 
-    return jsonify({"status": "Ignorado - No hay reglas activas para este recurso"})
+        if page_id:
+            # Buscar regla que coincida con esta página
+            rule = AutoRule.query.filter_by(
+                target_type='page', 
+                trigger_type='webhook', 
+                is_active=True
+            ).filter(
+                (AutoRule.target_id == page_id) | (AutoRule.target_id == 'all')
+            ).first()
+
+            if rule:
+                # Traducir SOLO esta página
+                if translator.process_page_dom(page_id, es_loc['id'], en_loc['id']):
+                    return jsonify({"status": f"✅ Página {page_id} traducida correctamente"}), 200
+                else:
+                    return jsonify({"status": f"⏭️ Página {page_id} no necesitaba traducción (sin cambios o límite alcanzado)"}), 200
+            else:
+                return jsonify({"status": f"⏭️ No hay regla activa para page {page_id}"}), 200
+
+    # --- CASO 3: Publicación de sitio (SOLO si hay reglas específicas) ---
+    elif trigger_type == 'site-publish':
+        site_id = data.get('siteId')
+        if site_id and site_id == config.site_id:
+            # Buscar reglas de página que tengan target_id='all' (traducir todo el sitio)
+            page_rules = AutoRule.query.filter_by(
+                target_type='page', 
+                trigger_type='webhook', 
+                is_active=True
+            ).filter(AutoRule.target_id == 'all').all()
+
+            processed = 0
+            for rule in page_rules:
+                # Traducir TODAS las páginas (solo para reglas 'all')
+                for page in translator.get_pages(config.site_id):
+                    if translator.process_page_dom(page['id'], es_loc['id'], en_loc['id']):
+                        processed += 1
+
+            return jsonify({"status": f"Site Publish: {processed} páginas procesadas."}), 200
+
+    # --- CASO 4: Evento no soportado ---
+    else:
+        return jsonify({"status": f"Trigger '{trigger_type}' no soportado aún"}), 200
+
+    return jsonify({"status": "Ignorado - No hay reglas activas para este recurso"}), 200
