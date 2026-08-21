@@ -187,10 +187,9 @@ def auto():
         modified_within_days = int(request.form.get('modified_within_days', 5)) if trigger_type == 'cron' else 0
         target_name = request.form.get('target_name', 'Sin nombre')
 
-        # 🔥 SOLUCIÓN: Verificar si ya existe una regla con ese target_id
+        # 🔥 CORREGIDO: Si existe, actualizar; si no, crear
         existing_rule = AutoRule.query.filter_by(target_id=target_id).first()
         if existing_rule:
-            # Si existe, actualizarla en lugar de crear una nueva
             existing_rule.target_type = target_type
             existing_rule.trigger_type = trigger_type
             existing_rule.frequency_days = frequency_days
@@ -200,7 +199,6 @@ def auto():
             existing_rule.is_active = True
             flash(f"Regla actualizada para '{target_name}'.", "success")
         else:
-            # Si no existe, crear una nueva
             new_rule = AutoRule(
                 target_id=target_id,
                 target_type=target_type,
@@ -221,10 +219,7 @@ def auto():
     collections = translator.get_collections(config.site_id)
     return render_template('auto.html', rules=rules, pages=pages, collections=collections)
 
-# ==========================================
-# 🔥 NUEVA RUTA: Toggle activar/desactivar regla
-# ==========================================
-
+# 🔥 NUEVA RUTA: Toggle activar/desactivar
 @main.route('/auto/toggle/<int:id>', methods=['POST'])
 @login_required
 def toggle_auto(id):
@@ -233,6 +228,16 @@ def toggle_auto(id):
     db.session.commit()
     status = "activada" if rule.is_active else "desactivada"
     flash(f"Regla '{rule.target_name}' {status}.", "success")
+    return redirect(url_for('main.auto'))
+
+# 🔥 RUTA PARA ELIMINAR REGLA
+@main.route('/auto/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_auto(id):
+    rule = AutoRule.query.get_or_404(id)
+    db.session.delete(rule)
+    db.session.commit()
+    flash(f"Regla '{rule.target_name}' eliminada.", "success")
     return redirect(url_for('main.auto'))
 
 # ==========================================
@@ -339,13 +344,14 @@ def webflow_webhook():
     trigger_type = data.get('triggerType')
     print(f"📨 Webhook recibido: triggerType={trigger_type}")
 
-    # --- CASO 1: Evento de CMS ---
+    # --- CASO 1: Evento de CMS (item creado, cambiado, publicado, etc.) ---
     if trigger_type in ['collection-item-created', 'collection-item-changed', 
                         'collection-item-published', 'collection-item-unpublished']:
         collection_id = data.get('collectionId') or data.get('_cid')
         item_id = data.get('itemId') or data.get('_id')
 
         if collection_id and item_id:
+            # Buscar regla que coincida con esta colección
             rule = AutoRule.query.filter_by(
                 target_type='collection', 
                 trigger_type='webhook', 
@@ -357,20 +363,22 @@ def webflow_webhook():
             if rule:
                 full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
                 if full_item:
+                    # Traducir SOLO este item (force=False por defecto)
                     if translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId']):
                         return jsonify({"status": f"✅ Item {item_id} traducido correctamente"}), 200
                     else:
-                        return jsonify({"status": f"⏭️ Item {item_id} no necesitaba traducción"}), 200
+                        return jsonify({"status": f"⏭️ Item {item_id} no necesitaba traducción (sin cambios o límite alcanzado)"}), 200
                 else:
                     return jsonify({"error": "Item no encontrado"}), 404
             else:
                 return jsonify({"status": f"⏭️ No hay regla activa para collection {collection_id}"}), 200
 
-    # --- CASO 2: Evento de página ---
+    # --- CASO 2: Evento de página (creada o metadata actualizada) ---
     elif trigger_type in ['page-created', 'page-metadata-updated']:
         page_id = data.get('pageId')
 
         if page_id:
+            # Buscar regla que coincida con esta página
             rule = AutoRule.query.filter_by(
                 target_type='page', 
                 trigger_type='webhook', 
@@ -380,17 +388,19 @@ def webflow_webhook():
             ).first()
 
             if rule:
+                # Traducir SOLO esta página
                 if translator.process_page_dom(page_id, es_loc['id'], en_loc['id']):
                     return jsonify({"status": f"✅ Página {page_id} traducida correctamente"}), 200
                 else:
-                    return jsonify({"status": f"⏭️ Página {page_id} no necesitaba traducción"}), 200
+                    return jsonify({"status": f"⏭️ Página {page_id} no necesitaba traducción (sin cambios o límite alcanzado)"}), 200
             else:
                 return jsonify({"status": f"⏭️ No hay regla activa para page {page_id}"}), 200
 
-    # --- CASO 3: Publicación de sitio ---
+    # --- CASO 3: Publicación de sitio (SOLO si hay reglas específicas) ---
     elif trigger_type == 'site-publish':
         site_id = data.get('siteId')
         if site_id and site_id == config.site_id:
+            # Buscar reglas de página que tengan target_id='all' (traducir todo el sitio)
             page_rules = AutoRule.query.filter_by(
                 target_type='page', 
                 trigger_type='webhook', 
@@ -399,12 +409,14 @@ def webflow_webhook():
 
             processed = 0
             for rule in page_rules:
+                # Traducir TODAS las páginas (solo para reglas 'all')
                 for page in translator.get_pages(config.site_id):
                     if translator.process_page_dom(page['id'], es_loc['id'], en_loc['id']):
                         processed += 1
 
             return jsonify({"status": f"Site Publish: {processed} páginas procesadas."}), 200
 
+    # --- CASO 4: Evento no soportado ---
     else:
         return jsonify({"status": f"Trigger '{trigger_type}' no soportado aún"}), 200
 
