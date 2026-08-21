@@ -2,138 +2,154 @@
 
 {% block content %}
 
-<h2>📋 Reglas Automáticas y Búsqueda</h2>
-
-<p>Configure qué elementos deben traducirse por sí solos mediante buscadores avanzados. La clave de seguridad del Webhook se guarda por cada regla de manera independiente.</p>
+<h2>📋 Automatizaciones Inteligentes</h2>
+<p class="text-muted">Configure qué elementos deben traducirse por sí solos mediante buscadores avanzados. La clave de seguridad del Webhook se guarda por cada regla de manera independiente.</p>
 
 <form method="POST">
-    <div class="mb-3">
-        <label class="form-label">¿Qué tipo de recurso automatizará?</label>
-        <div class="form-check">
-            <input class="form-check-input" type="radio" name="target_type" id="type_page" value="page" checked>
-            <label class="form-check-label" for="type_page">Páginas Estáticas</label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="radio" name="target_type" id="type_collection" value="collection">
-            <label class="form-check-label" for="type_collection">Colecciones del CMS (Post Types)</label>
+    <div class="mb-4">
+        <label class="form-label fw-bold">¿Qué tipo de recurso automatizará?</label>
+        <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="target_type" id="type_page" value="page" checked autocomplete="off">
+            <label class="btn btn-outline-primary" for="type_page">📄 Páginas Estáticas</label>
+
+            <input type="radio" class="btn-check" name="target_type" id="type_collection" value="collection" autocomplete="off">
+            <label class="btn btn-outline-primary" for="type_collection">📦 Colecciones CMS</label>
+
+            <input type="radio" class="btn-check" name="target_type" id="type_component" value="component" autocomplete="off">
+            <label class="btn btn-outline-primary" for="type_component">🧩 Componentes (Símbolos)</label>
         </div>
     </div>
 
-    <div class="mb-3">
-        <label class="form-label">Busque el Recurso Específico:</label>
-        <select name="target_id" class="form-select" required>
-            <option value="all">⚠️ Automatizar TODOS los recursos</option>
-            {% if pages %}
-                <optgroup label="📄 Páginas">
-                {% for page in pages %}
-                    <option value="{{ page.id }}">{{ page.title }}</option>
-                {% endfor %}
-                </optgroup>
-            {% endif %}
-            {% if collections %}
-                <optgroup label="📦 Colecciones CMS">
-                {% for col in collections %}
-                    <option value="{{ col.id }}">{{ col.displayName }}</option>
-                {% endfor %}
-                </optgroup>
-            {% endif %}
-        </select>
+    <div class="mb-4">
+        <label class="form-label fw-bold">Busque el Recurso Específico:</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <select name="target_id" class="form-select form-select-lg" required>
+                <option value="all">⚠️ Automatizar TODOS los recursos</option>
+                {% if pages %}
+                    <optgroup label="📄 Páginas">
+                    {% for page in pages %}
+                        <option value="{{ page.id }}">{{ page.title }}</option>
+                    {% endfor %}
+                    </optgroup>
+                {% endif %}
+                {% if collections %}
+                    <optgroup label="📦 Colecciones CMS">
+                    {% for col in collections %}
+                        <option value="{{ col.id }}">{{ col.displayName }}</option>
+                    {% endfor %}
+                    </optgroup>
+                {% endif %}
+            </select>
+        </div>
         <small class="text-muted">Selecciona un recurso específico o 'Todos' para automatizar todo.</small>
     </div>
 
-    <div class="mb-3">
-        <label class="form-label">Método de Ejecución (Trigger):</label>
-        <div class="form-check">
-            <input class="form-check-input" type="radio" name="trigger_type" id="trigger_cron" value="cron">
-            <label class="form-check-label" for="trigger_cron">⏰ Por Tiempo (Cron Job Serverless)</label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="radio" name="trigger_type" id="trigger_webhook" value="webhook" checked>
-            <label class="form-check-label" for="trigger_webhook">⚡ Por Acción (Webhook Instantáneo al publicar)</label>
+    <div class="mb-4">
+        <label class="form-label fw-bold">Método de Ejecución (Trigger):</label>
+        <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="trigger_type" id="trigger_cron" value="cron" autocomplete="off">
+            <label class="btn btn-outline-secondary" for="trigger_cron">⏰ Por Tiempo (Cron)</label>
+
+            <input type="radio" class="btn-check" name="trigger_type" id="trigger_webhook" value="webhook" checked autocomplete="off">
+            <label class="btn btn-outline-secondary" for="trigger_webhook">⚡ Por Acción (Webhook Instantáneo)</label>
         </div>
     </div>
 
-    <div class="mb-3" id="cron_options" style="display:none;">
-        <label class="form-label">Frecuencia (Solo Cron):</label>
-        <select name="frequency_days" class="form-select">
-            <option value="1">Todos los días</option>
-            <option value="3" selected>Cada 3 días</option>
-            <option value="7">Cada 7 días</option>
-        </select>
-        <label class="form-label mt-2">Traducir Modificados en los últimos:</label>
-        <select name="modified_within_days" class="form-select">
-            <option value="3">3 días</option>
-            <option value="5" selected>5 días</option>
-            <option value="30">30 días</option>
-        </select>
+    <div class="mb-4" id="cron_options" style="display:none;">
+        <div class="row">
+            <div class="col-md-6">
+                <label class="form-label">Frecuencia (días):</label>
+                <select name="frequency_days" class="form-select">
+                    <option value="1">Cada día</option>
+                    <option value="3" selected>Cada 3 días</option>
+                    <option value="7">Cada 7 días</option>
+                    <option value="15">Cada 15 días</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Traducir modificados en últimos:</label>
+                <select name="modified_within_days" class="form-select">
+                    <option value="3">3 días</option>
+                    <option value="5" selected>5 días</option>
+                    <option value="30">30 días</option>
+                </select>
+            </div>
+        </div>
     </div>
 
-    <div class="mb-3">
-        <label class="form-label">Webflow Webhook Secret Key (Seguridad):</label>
+    <div class="mb-4">
+        <label class="form-label fw-bold">Webflow Webhook Secret Key (Seguridad):</label>
         <input type="text" name="webhook_secret" class="form-control" placeholder="Pegue la clave de seguridad única que le otorgó Webflow al crear este Webhook">
         <small class="text-muted">Al guardar, esta regla quedará protegida contra ataques externos.</small>
     </div>
 
     <input type="hidden" name="target_name" value="Regla automática">
 
-    <button type="submit" class="btn btn-primary">💾 Guardar Regla Automática</button>
+    <button type="submit" class="btn btn-primary btn-lg w-100">💾 Guardar Regla Automática</button>
 </form>
 
-<hr>
+<hr class="my-5">
 
 <h3>📌 Reglas Activas</h3>
 
 {% if rules %}
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Estado</th>
-                <th>Recurso</th>
-                <th>Automático</th>
-                <th>Método</th>
-                <th>Condiciones</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-        {% for rule in rules %}
-            <tr>
-                <td>
-                    {% if rule.is_active %}
-                        <span class="badge bg-success">✅ ACTIVA</span>
-                    {% else %}
-                        <span class="badge bg-secondary">⏸️ PAUSADA</span>
-                    {% endif %}
-                </td>
-                <td>{{ rule.target_name }}</td>
-                <td><code>{{ rule.target_id }}</code></td>
-                <td>
-                    {% if rule.trigger_type == 'cron' %}
-                        ⏰ Cron (Tiempo)
-                    {% else %}
-                        ⚡ Webhook (Acción)
-                    {% endif %}
-                </td>
-                <td>
-                    {% if rule.trigger_type == 'cron' %}
-                        Cada: {{ rule.frequency_days }}d<br>
-                        Filtro: {{ rule.modified_within_days }}d
-                    {% else %}
-                        Instantáneo
-                    {% endif %}
-                </td>
-                <td>
-                    <!-- 🔥 CORREGIDO: Ahora apunta a 'main.toggle_auto' -->
-                    <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
-                        <button type="submit" class="btn btn-sm {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}">
-                            {% if rule.is_active %}⏸️ Pausar{% else %}▶️ Activar{% endif %}
-                        </button>
-                    </form>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Estado</th>
+                    <th>Recurso</th>
+                    <th>ID</th>
+                    <th>Método</th>
+                    <th>Condiciones</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for rule in rules %}
+                <tr>
+                    <td>
+                        {% if rule.is_active %}
+                            <span class="badge bg-success">✅ ACTIVA</span>
+                        {% else %}
+                            <span class="badge bg-secondary">⏸️ PAUSADA</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ rule.target_name }}</strong></td>
+                    <td><code>{{ rule.target_id }}</code></td>
+                    <td>
+                        {% if rule.trigger_type == 'cron' %}
+                            <span class="badge bg-info">⏰ Cron</span>
+                        {% else %}
+                            <span class="badge bg-warning">⚡ Webhook</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if rule.trigger_type == 'cron' %}
+                            Cada {{ rule.frequency_days }}d<br>
+                            <small>Filtro: {{ rule.modified_within_days }}d</small>
+                        {% else %}
+                            <span class="text-muted">Instantáneo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <!-- 🔥 CORREGIDO: apunta a main.toggle_auto -->
+                        <form action="{{ url_for('main.toggle_auto', id=rule.id) }}" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-sm {% if rule.is_active %}btn-warning{% else %}btn-success{% endif %}" title="Activar/Pausar">
+                                {% if rule.is_active %}⏸️{% else %}▶️{% endif %}
+                            </button>
+                        </form>
+                        <!-- 🔥 ELIMINAR -->
+                        <form action="{{ url_for('main.delete_auto', id=rule.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Eliminar esta regla?');">
+                            <button type="submit" class="btn btn-sm btn-danger" title="Eliminar">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 {% else %}
     <div class="alert alert-info">No hay reglas configuradas aún. Crea una arriba.</div>
 {% endif %}
