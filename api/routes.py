@@ -1,6 +1,7 @@
 import os
 import hmac
 import hashlib
+import time  # <-- Nuevo import
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 import requests
@@ -187,7 +188,6 @@ def auto():
         modified_within_days = int(request.form.get('modified_within_days', 5)) if trigger_type == 'cron' else 0
         target_name = request.form.get('target_name', 'Sin nombre')
 
-        # 🔥 CORREGIDO: Si existe, actualizar; si no, crear
         existing_rule = AutoRule.query.filter_by(target_id=target_id).first()
         if existing_rule:
             existing_rule.target_type = target_type
@@ -219,7 +219,6 @@ def auto():
     collections = translator.get_collections(config.site_id)
     return render_template('auto.html', rules=rules, pages=pages, collections=collections)
 
-# 🔥 NUEVA RUTA: Toggle activar/desactivar
 @main.route('/auto/toggle/<int:id>', methods=['POST'])
 @login_required
 def toggle_auto(id):
@@ -230,7 +229,6 @@ def toggle_auto(id):
     flash(f"Regla '{rule.target_name}' {status}.", "success")
     return redirect(url_for('main.auto'))
 
-# 🔥 RUTA PARA ELIMINAR REGLA
 @main.route('/auto/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_auto(id):
@@ -303,7 +301,7 @@ def cron_translate():
     return jsonify({"status": "Cron finalizado con éxito", "items_traducidos": translated_count})
 
 # ==========================================
-# WEBHOOK PRINCIPAL - SOPORTE PARA MÚLTIPLES TRIGGERS
+# WEBHOOK PRINCIPAL - CON PUBLICACIÓN AUTOMÁTICA
 # ==========================================
 
 @main.route('/api/webhook/webflow', methods=['POST'])
@@ -351,7 +349,6 @@ def webflow_webhook():
         item_id = data.get('itemId') or data.get('_id')
 
         if collection_id and item_id:
-            # Buscar regla que coincida con esta colección
             rule = AutoRule.query.filter_by(
                 target_type='collection', 
                 trigger_type='webhook', 
@@ -361,13 +358,21 @@ def webflow_webhook():
             ).first()
 
             if rule:
+                # 🔥 ESPERAR 2 SEGUNDOS PARA QUE WEBFLOW PROCESE EL CAMBIO
+                time.sleep(2)
+
                 full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
                 if full_item:
-                    # Traducir SOLO este item (force=False por defecto)
-                    if translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId']):
-                        return jsonify({"status": f"✅ Item {item_id} traducido correctamente"}), 200
+                    success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
+                    if success:
+                        # 🔥 PUBLICAR EL SITIO AUTOMÁTICAMENTE PARA QUE LOS CAMBIOS SE REFLEJEN
+                        publish_result = translator.publish_site(config.site_id)
+                        return jsonify({
+                            "status": f"✅ Item {item_id} traducido y sitio publicado.",
+                            "publish": publish_result
+                        }), 200
                     else:
-                        return jsonify({"status": f"⏭️ Item {item_id} no necesitaba traducción (sin cambios o límite alcanzado)"}), 200
+                        return jsonify({"status": f"⏭️ Item {item_id} no necesitaba traducción"}), 200
                 else:
                     return jsonify({"error": "Item no encontrado"}), 404
             else:
@@ -376,9 +381,7 @@ def webflow_webhook():
     # --- CASO 2: Evento de página (creada o metadata actualizada) ---
     elif trigger_type in ['page-created', 'page-metadata-updated']:
         page_id = data.get('pageId')
-
         if page_id:
-            # Buscar regla que coincida con esta página
             rule = AutoRule.query.filter_by(
                 target_type='page', 
                 trigger_type='webhook', 
@@ -388,11 +391,16 @@ def webflow_webhook():
             ).first()
 
             if rule:
-                # Traducir SOLO esta página
-                if translator.process_page_dom(page_id, es_loc['id'], en_loc['id']):
-                    return jsonify({"status": f"✅ Página {page_id} traducida correctamente"}), 200
+                time.sleep(2)
+                success = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
+                if success:
+                    publish_result = translator.publish_site(config.site_id)
+                    return jsonify({
+                        "status": f"✅ Página {page_id} traducida y sitio publicado.",
+                        "publish": publish_result
+                    }), 200
                 else:
-                    return jsonify({"status": f"⏭️ Página {page_id} no necesitaba traducción (sin cambios o límite alcanzado)"}), 200
+                    return jsonify({"status": f"⏭️ Página {page_id} no necesitaba traducción"}), 200
             else:
                 return jsonify({"status": f"⏭️ No hay regla activa para page {page_id}"}), 200
 
@@ -400,7 +408,6 @@ def webflow_webhook():
     elif trigger_type == 'site-publish':
         site_id = data.get('siteId')
         if site_id and site_id == config.site_id:
-            # Buscar reglas de página que tengan target_id='all' (traducir todo el sitio)
             page_rules = AutoRule.query.filter_by(
                 target_type='page', 
                 trigger_type='webhook', 
@@ -409,14 +416,13 @@ def webflow_webhook():
 
             processed = 0
             for rule in page_rules:
-                # Traducir TODAS las páginas (solo para reglas 'all')
                 for page in translator.get_pages(config.site_id):
                     if translator.process_page_dom(page['id'], es_loc['id'], en_loc['id']):
                         processed += 1
 
+            # Ya se publicó, no es necesario volver a publicar
             return jsonify({"status": f"Site Publish: {processed} páginas procesadas."}), 200
 
-    # --- CASO 4: Evento no soportado ---
     else:
         return jsonify({"status": f"Trigger '{trigger_type}' no soportado aún"}), 200
 
