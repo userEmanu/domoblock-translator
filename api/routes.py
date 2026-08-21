@@ -363,7 +363,7 @@ def webflow_webhook():
 
                 full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
                 if full_item:
-                    success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
+                    success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'], force=True)
                     if success:
                         # 🔥 PUBLICAR EL SITIO AUTOMÁTICAMENTE PARA QUE LOS CAMBIOS SE REFLEJEN
                         publish_result = translator.publish_site(config.site_id)
