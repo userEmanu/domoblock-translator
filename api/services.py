@@ -149,8 +149,8 @@ class TranslatorService:
         # LÍMITE DE 2 TRADUCCIONES PARA AUTOMATIZACIONES
         record = TranslationRecord.query.filter_by(item_id=item_id).first()
         
-        if record and record.translation_count >= 2:
-            self.escribe_log(f"  {item_id}: Límite de 2 traducciones alcanzado. No se traduce.")
+        if record and record.translation_count >= 4:
+            self.escribe_log(f"  {item_id}: Límite de 4 traducciones alcanzado. No se traduce.")
             return False
 
         current_hash = self.generate_hash(data_to_hash)
