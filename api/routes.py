@@ -383,7 +383,7 @@ def webflow_webhook():
             send_webhook_log(admin_email, smtp_email, smtp_password, "  Webhook Fallido - Sin Data", "\n".join(log_lines))
             return jsonify({"status": "No data"}), 400
 
-        # Se eliminó el truncamiento del payload para ver todo en el correo
+        # Se mantiene el log del payload completo (sin truncar) para el correo
         payload_str = json.dumps(data, indent=2)
         add_log(f"  Payload recibido: {payload_str}")
 

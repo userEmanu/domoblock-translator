@@ -98,11 +98,28 @@ class TranslatorService:
 
     def publish_site(self, site_id):
         """Publica el sitio en Webflow para que los cambios se reflejen."""
+        
+        # 1. Obtener automáticamente los IDs de los dominios personalizados para evitar errores
+        custom_domains = []
+        try:
+            dom_res = requests.get(f"{self.base_url}/sites/{site_id}/customdomains", headers=self.headers)
+            if dom_res.status_code == 200:
+                dom_data = dom_res.json()
+                if isinstance(dom_data, list):
+                    custom_domains = [d.get("id") for d in dom_data if "id" in d]
+                elif isinstance(dom_data, dict) and "customDomains" in dom_data:
+                    custom_domains = [d.get("id") for d in dom_data["customDomains"] if "id" in d]
+        except Exception as e:
+            self.escribe_log(f"  Aviso: No se pudieron obtener custom domains: {e}")
+
         url = f"{self.base_url}/sites/{site_id}/publish"
         payload = {
-            "publishToWebflowSubdomain": True,
-            "customDomains": ["domoblock.io"]
+            "publishToWebflowSubdomain": True
         }
+        
+        # Asignamos los IDs de dominio dinámicamente
+        if custom_domains:
+            payload["customDomains"] = custom_domains
         
         try:
             res = requests.post(url, headers=self.headers, json=payload)
@@ -274,31 +291,28 @@ class TranslatorService:
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 
-                # 1. Si tenemos tanto HTML como texto plano (optimizacion DeepL)
-                if "html" in text_obj and text_obj["html"].strip() and "text" in text_obj and text_obj["text"].strip():
+                if "html" in text_obj and text_obj["html"].strip():
                     original_html = text_obj["html"]
-                    original_text = text_obj["text"]
+                    original_text = text_obj.get("text", "").strip()
                     
-                    # Traducimos SOLO el texto plano sin etiquetas HTML
-                    tr_text = self.translate_text(original_text, is_html=False)
-                    
-                    # Reemplazamos el texto traducido dentro del HTML original
-                    tr_html = original_html.replace(original_text, tr_text)
-                    
-                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                    self.escribe_log(f"  Texto optimizado (ahorro DeepL): {original_text[:50]}... -> {tr_text[:50]}...")
-                
-                # 2. Respaldo si solo viene html (raro pero posible)
-                elif "html" in text_obj and text_obj["html"].strip():
-                    tr_html = self.translate_text(text_obj["html"], is_html=True)
-                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                    self.escribe_log(f"  HTML traducido directo: {text_obj['html'][:50]}... -> {tr_html[:50]}...")
-                    
-                # 3. Respaldo si solo viene texto plano
+                    # MEJORA: Solo podemos hacer el "ahorro" (replace) si el texto plano es exactamente 
+                    # una subcadena contigua dentro del HTML (es decir, no está roto por <span> o <br>).
+                    if original_text and original_text in original_html:
+                        tr_text = self.translate_text(original_text, is_html=False)
+                        tr_html = original_html.replace(original_text, tr_text)
+                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                        self.escribe_log(f"  Texto optimizado (ahorro DeepL): {original_text[:50]}... -> {tr_text[:50]}...")
+                    else:
+                        # El HTML tiene etiquetas anidadas que rompen el texto (ej. <p>Hola <span>mundo</span></p>)
+                        # DEBEMOS traducir el HTML completo con DeepL para no perder partes.
+                        tr_html = self.translate_text(original_html, is_html=True)
+                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                        self.escribe_log(f"  HTML complejo traducido directo: {original_html[:50]}... -> {tr_html[:50]}...")
+                        
                 elif "text" in text_obj and text_obj["text"].strip():
                     tr_text = self.translate_text(text_obj["text"], is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
-                    self.escribe_log(f"  Texto traducido: {text_obj['text'][:50]}... -> {tr_text[:50]}...")
+                    self.escribe_log(f"  Texto plano traducido: {text_obj['text'][:50]}... -> {tr_text[:50]}...")
 
             elif node_type == "submit-button":
                 if "value" in node:
@@ -373,8 +387,16 @@ class TranslatorService:
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 if "html" in text_obj and text_obj["html"].strip():
-                    tr_html = self.translate_text(text_obj["html"], is_html=True)
-                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                    original_html = text_obj["html"]
+                    original_text = text_obj.get("text", "").strip()
+                    
+                    if original_text and original_text in original_html:
+                        tr_text = self.translate_text(original_text, is_html=False)
+                        tr_html = original_html.replace(original_text, tr_text)
+                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                    else:
+                        tr_html = self.translate_text(original_html, is_html=True)
+                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
                 elif "text" in text_obj and text_obj["text"].strip():
                     tr_text = self.translate_text(text_obj["text"], is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
