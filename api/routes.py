@@ -434,7 +434,7 @@ def webflow_webhook():
                     if full_item:
                         item_name = full_item.get('fieldData', {}).get('name', 'Sin nombre')
                         add_log(f"  Item obtenido: {item_id} - {item_name}")
-                        add_log(f"  Traduciendo item (force=False, límite de 2)...")
+                        add_log(f"  Traduciendo item (force=False, límite de 3)...")
                         
                         success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
                         if success:
@@ -508,7 +508,7 @@ def webflow_webhook():
                     add_log(f"  Esperando 2 segundos para que Webflow procese el cambio...")
                     time.sleep(2)
                     
-                    add_log(f"  Traduciendo página (force=False, límite de 2)...")
+                    add_log(f"  Traduciendo página (force=False, límite de 3)...")
                     success = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
                     
                     if success:

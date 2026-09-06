@@ -140,17 +140,17 @@ class TranslatorService:
         """
         Verifica si se puede traducir.
         - force=True: siempre permite (manual).
-        - force=False: aplica límite de 2 traducciones (automatizaciones).
+        - force=False: aplica límite de 3 traducciones (automatizaciones).
         """
         if force:
             self.escribe_log(f"  Traducción forzada para {item_id}. Ignorando caché y límites.")
             return True
 
-        # LÍMITE DE 2 TRADUCCIONES PARA AUTOMATIZACIONES
+        # LÍMITE DE 3 TRADUCCIONES PARA AUTOMATIZACIONES
         record = TranslationRecord.query.filter_by(item_id=item_id).first()
         
-        if record and record.translation_count >= 4:
-            self.escribe_log(f"  {item_id}: Límite de 4 traducciones alcanzado. No se traduce.")
+        if record and record.translation_count >= 3:
+            self.escribe_log(f"  {item_id}: Límite de 3 traducciones alcanzado. No se traduce.")
             return False
 
         current_hash = self.generate_hash(data_to_hash)
@@ -212,7 +212,7 @@ class TranslatorService:
         """
         Traduce un solo item del CMS.
         - force=True: manual, ignora límite.
-        - force=False: automatización, respeta límite de 2.
+        - force=False: automatización, respeta límite de 3.
         """
         if not self.can_translate(item['id'], 'collection', item.get('fieldData', {}), force=force):
             return False
@@ -291,28 +291,23 @@ class TranslatorService:
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
                 
-                if "html" in text_obj and text_obj["html"].strip():
-                    original_html = text_obj["html"]
-                    original_text = text_obj.get("text", "").strip()
-                    
-                    # MEJORA: Solo podemos hacer el "ahorro" (replace) si el texto plano es exactamente 
-                    # una subcadena contigua dentro del HTML (es decir, no está roto por <span> o <br>).
-                    if original_text and original_text in original_html:
+                original_html = text_obj.get("html") or ""
+                original_text = text_obj.get("text") or ""
+                
+                if original_html.strip():
+                    if original_text.strip() and original_text in original_html:
                         tr_text = self.translate_text(original_text, is_html=False)
                         tr_html = original_html.replace(original_text, tr_text)
                         translated_nodes.append({"nodeId": node_id, "text": tr_html})
                         self.escribe_log(f"  Texto optimizado (ahorro DeepL): {original_text[:50]}... -> {tr_text[:50]}...")
                     else:
-                        # El HTML tiene etiquetas anidadas que rompen el texto (ej. <p>Hola <span>mundo</span></p>)
-                        # DEBEMOS traducir el HTML completo con DeepL para no perder partes.
                         tr_html = self.translate_text(original_html, is_html=True)
                         translated_nodes.append({"nodeId": node_id, "text": tr_html})
                         self.escribe_log(f"  HTML complejo traducido directo: {original_html[:50]}... -> {tr_html[:50]}...")
-                        
-                elif "text" in text_obj and text_obj["text"].strip():
-                    tr_text = self.translate_text(text_obj["text"], is_html=False)
+                elif original_text.strip():
+                    tr_text = self.translate_text(original_text, is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
-                    self.escribe_log(f"  Texto plano traducido: {text_obj['text'][:50]}... -> {tr_text[:50]}...")
+                    self.escribe_log(f"  Texto plano traducido: {original_text[:50]}... -> {tr_text[:50]}...")
 
             elif node_type == "submit-button":
                 if "value" in node:
@@ -386,20 +381,24 @@ class TranslatorService:
 
             if node_type == "text" and "text" in node and isinstance(node["text"], dict):
                 text_obj = node["text"]
-                if "html" in text_obj and text_obj["html"].strip():
-                    original_html = text_obj["html"]
-                    original_text = text_obj.get("text", "").strip()
-                    
-                    if original_text and original_text in original_html:
+                
+                original_html = text_obj.get("html") or ""
+                original_text = text_obj.get("text") or ""
+                
+                if original_html.strip():
+                    if original_text.strip() and original_text in original_html:
                         tr_text = self.translate_text(original_text, is_html=False)
                         tr_html = original_html.replace(original_text, tr_text)
                         translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                        self.escribe_log(f"  Texto optimizado (ahorro DeepL): {original_text[:50]}... -> {tr_text[:50]}...")
                     else:
                         tr_html = self.translate_text(original_html, is_html=True)
                         translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                elif "text" in text_obj and text_obj["text"].strip():
-                    tr_text = self.translate_text(text_obj["text"], is_html=False)
+                        self.escribe_log(f"  HTML complejo traducido directo: {original_html[:50]}... -> {tr_html[:50]}...")
+                elif original_text.strip():
+                    tr_text = self.translate_text(original_text, is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
+                    self.escribe_log(f"  Texto plano traducido: {original_text[:50]}... -> {tr_text[:50]}...")
 
             elif node_type == "submit-button":
                 if "value" in node:
