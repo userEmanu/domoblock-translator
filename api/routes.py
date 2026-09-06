@@ -10,7 +10,6 @@ from api.models import db, User, Settings, AutoRule
 from api.services import TranslatorService, send_login_alert, send_webhook_log
 
 main = Blueprint('main', __name__)
-
 RECAPTCHA_SECRET = '6Lcomo4tAAAAABXYSj-xbZdUSxE2CHfP_BtNeUGa'
 
 def login_required(f):
@@ -33,30 +32,35 @@ def get_translator():
 # ==========================================
 # LOGIN Y DASHBOARD
 # ==========================================
-
 @main.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         recaptcha_response = request.form.get('g-recaptcha-response')
+
         verify_url = 'https://www.google.com/recaptcha/api/siteverify'
         r_result = requests.post(verify_url, data={'secret': RECAPTCHA_SECRET, 'response': recaptcha_response}).json()
+
         if not r_result.get('success') or r_result.get('score', 0) < 0.5:
             flash("Verificación reCAPTCHA fallida o comportamiento de Bot detectado.", "danger")
             return render_template('login.html')
+
         try:
             user = User.query.filter_by(username=username).first()
             if user and user.check_password(password):
                 session['logged_in'] = True
+                
                 config = Settings.query.first()
                 if config and config.admin_email and config.smtp_email and config.smtp_password:
                     send_login_alert(config.admin_email, config.smtp_email, config.smtp_password)
+                
                 return redirect(url_for('main.dashboard'))
             else:
                 flash("Credenciales incorrectas", "danger")
         except Exception as e:
             flash(f"Error de base de datos durante el login: {e}", "danger")
+
     return render_template('login.html')
 
 @main.route('/logout')
@@ -73,6 +77,7 @@ def dashboard():
         config = Settings(admin_email="emanueel031@gmail.com", smtp_email="supportitgv@gmail.com")
         db.session.add(config)
         db.session.commit()
+
     if request.method == 'POST':
         config.deepl_api_key = request.form.get('deepl_key')
         config.webflow_token = request.form.get('webflow_token')
@@ -82,18 +87,20 @@ def dashboard():
         config.smtp_password = request.form.get('smtp_password')
         db.session.commit()
         flash("Configuración guardada exitosamente.", "success")
+
     usage = "API no configurada"
     translator, _ = get_translator()
     if translator:
         usage = translator.get_deepl_usage()
+
     utc_now = datetime.utcnow()
     colombia_time = utc_now - timedelta(hours=5)
+
     return render_template('dashboard.html', config=config, usage=usage, current_time=colombia_time.strftime('%Y-%m-%d %I:%M %p'))
 
 # ==========================================
 # RUTAS DE TRADUCCIÓN MANUAL
 # ==========================================
-
 @main.route('/manual')
 @login_required
 def manual():
@@ -101,6 +108,7 @@ def manual():
     if not translator:
         flash("Configure las APIs en el Dashboard primero.", "warning")
         return redirect(url_for('main.dashboard'))
+        
     pages = translator.get_pages(config.site_id)
     collections = translator.get_collections(config.site_id)
     components = translator.get_components(config.site_id)
@@ -112,6 +120,7 @@ def get_collection_items(collection_id):
     translator, config = get_translator()
     if not translator:
         return jsonify([])
+    
     es_loc, _ = translator.get_locales(config.site_id)
     items = translator.get_items(collection_id, es_loc['cmsLocaleId'])
     return jsonify([{'id': i['id'], 'name': i.get('fieldData', {}).get('name', 'Sin Nombre')} for i in items])
@@ -122,10 +131,12 @@ def manual_translate():
     translator, config = get_translator()
     if not translator:
         return redirect(url_for('main.manual'))
+
     es_loc, en_loc = translator.get_locales(config.site_id)
     target_type = request.form.get('target_type')
     target_id = request.form.get('target_id')
     item_id = request.form.get('item_id')
+    
     processed = 0
 
     if target_type == 'page':
@@ -137,7 +148,7 @@ def manual_translate():
         else:
             if translator.process_page_dom(target_id, es_id, en_id, force=True):
                 processed += 1
-
+                
     elif target_type == 'collection':
         es_id, en_id = es_loc['cmsLocaleId'], en_loc['cmsLocaleId']
         if target_id == 'all':
@@ -154,7 +165,7 @@ def manual_translate():
                 item = translator.get_single_item(target_id, item_id, es_id)
                 if item and translator.process_cms_item(target_id, item, en_id, force=True):
                     processed += 1
-
+                    
     elif target_type == 'component':
         es_id, en_id = es_loc['id'], en_loc['id']
         if target_id == 'all':
@@ -171,7 +182,6 @@ def manual_translate():
 # ==========================================
 # RUTAS DE AUTOMATIZACIÓN (REGLAS)
 # ==========================================
-
 @main.route('/auto', methods=['GET', 'POST'])
 @login_required
 def auto():
@@ -185,6 +195,7 @@ def auto():
         target_type = request.form.get('target_type')
         trigger_type = request.form.get('trigger_type')
         webhook_secret = request.form.get('webhook_secret')
+        
         frequency_days = int(request.form.get('frequency_days', 3)) if trigger_type == 'cron' else 0
         modified_within_days = int(request.form.get('modified_within_days', 5)) if trigger_type == 'cron' else 0
         target_name = request.form.get('target_name', 'Sin nombre')
@@ -212,12 +223,13 @@ def auto():
             )
             db.session.add(new_rule)
             flash("Regla de automatización guardada.", "success")
-        
+            
         db.session.commit()
 
     rules = AutoRule.query.all()
     pages = translator.get_pages(config.site_id)
     collections = translator.get_collections(config.site_id)
+
     return render_template('auto.html', rules=rules, pages=pages, collections=collections)
 
 @main.route('/auto/toggle/<int:id>', methods=['POST'])
@@ -242,11 +254,11 @@ def delete_auto(id):
 # ==========================================
 # ENDPOINTS AUTOMÁTICOS (CRON Y WEBHOOKS)
 # ==========================================
-
 @main.route('/api/cron/translate', methods=['GET', 'POST'])
 def cron_translate():
     auth_header = request.headers.get('Authorization')
     expected_secret = f"Bearer {os.environ.get('CRON_SECRET', 'default_cron_secret')}"
+    
     if auth_header != expected_secret:
         return jsonify({"error": "No autorizado"}), 401
 
@@ -266,6 +278,7 @@ def cron_translate():
         if rule.target_type == 'collection':
             es_id, en_id = es_loc['cmsLocaleId'], en_loc['cmsLocaleId']
             items = translator.get_items(rule.target_id, es_id) if rule.target_id != 'all' else []
+            
             if rule.target_id == 'all':
                 for col in translator.get_collections(config.site_id):
                     for item in translator.get_items(col['id'], es_id):
@@ -275,7 +288,7 @@ def cron_translate():
                 for item in items:
                     if translator.process_cms_item(rule.target_id, item, en_id):
                         translated_count += 1
-
+                        
         elif rule.target_type == 'page':
             es_id, en_id = es_loc['id'], en_loc['id']
             if rule.target_id == 'all':
@@ -285,7 +298,7 @@ def cron_translate():
             else:
                 if translator.process_page_dom(rule.target_id, es_id, en_id):
                     translated_count += 1
-
+                    
         elif rule.target_type == 'component':
             es_id, en_id = es_loc['id'], en_loc['id']
             if rule.target_id == 'all':
@@ -301,10 +314,10 @@ def cron_translate():
 
     return jsonify({"status": "Cron finalizado con éxito", "items_traducidos": translated_count})
 
+
 # ==========================================
 # WEBHOOK PRINCIPAL - CON TODOS LOS TRIGGERS (AMBOS FORMATOS)
 # ==========================================
-
 @main.route('/api/webhook/webflow', methods=['POST'])
 def webflow_webhook():
     # Obtener configuración para enviar correos
@@ -315,26 +328,28 @@ def webflow_webhook():
 
     # Variables para el log
     log_lines = []
+
     def add_log(msg):
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
         log_lines.append(f"[{timestamp}] {msg}")
         print(f"[{timestamp}] {msg}")
 
     add_log("=" * 60)
-    add_log("📨 NUEVO WEBHOOK RECIBIDO")
+    add_log("  NUEVO WEBHOOK RECIBIDO")
     add_log("=" * 60)
 
     try:
         translator, config = get_translator()
         if not translator:
-            add_log("❌ Translator no configurado")
-            send_webhook_log(admin_email, smtp_email, smtp_password, "⚠️ Webhook Fallido - Translator no configurado", "\n".join(log_lines))
+            add_log("  Translator no configurado")
+            send_webhook_log(admin_email, smtp_email, smtp_password, "  Webhook Fallido - Translator no configurado", "\n".join(log_lines))
             return jsonify({"status": "No config"}), 200
 
         # --- VALIDACIÓN CRIPTOGRÁFICA ---
         signature = request.headers.get('x-webflow-signature')
         timestamp_header = request.headers.get('x-webflow-timestamp')
-        add_log(f"🔐 Validación: signature={signature[:20] if signature else 'None'}... timestamp={timestamp_header}")
+        
+        add_log(f"  Validación: signature={signature[:20] if signature else 'None'}... timestamp={timestamp_header}")
 
         active_webhook_rules = AutoRule.query.filter_by(trigger_type='webhook', is_active=True).all()
         secrets = set([r.webhook_secret for r in active_webhook_rules if r.webhook_secret])
@@ -348,41 +363,40 @@ def webflow_webhook():
                     msg.encode('utf-8'),
                     hashlib.sha256
                 ).hexdigest()
+                
                 if hmac.compare_digest(expected_sig, signature):
                     is_valid = True
                     break
+            
             if not is_valid:
-                add_log("❌ Firma inválida. Posible ataque.")
-                send_webhook_log(admin_email, smtp_email, smtp_password, "⚠️ Webhook Rechazado - Firma Inválida", "\n".join(log_lines))
+                add_log("  Firma inválida. Posible ataque.")
+                send_webhook_log(admin_email, smtp_email, smtp_password, "  Webhook Rechazado - Firma Inválida", "\n".join(log_lines))
                 return jsonify({"error": "Firma inválida. Posible ataque."}), 401
             else:
-                add_log("✅ Firma verificada correctamente")
+                add_log("  Firma verificada correctamente")
         else:
-            add_log("ℹ️ Sin validación criptográfica (no hay secrets o headers)")
+            add_log("  Sin validación criptográfica (no hay secrets o headers)")
 
         data = request.json
         if not data:
-            add_log("❌ No se recibió data JSON")
-            send_webhook_log(admin_email, smtp_email, smtp_password, "⚠️ Webhook Fallido - Sin Data", "\n".join(log_lines))
+            add_log("  No se recibió data JSON")
+            send_webhook_log(admin_email, smtp_email, smtp_password, "  Webhook Fallido - Sin Data", "\n".join(log_lines))
             return jsonify({"status": "No data"}), 400
 
-        # Truncar payload para no saturar el correo
+        # Se eliminó el truncamiento del payload para ver todo en el correo
         payload_str = json.dumps(data, indent=2)
-        if len(payload_str) > 500:
-            payload_str = payload_str[:500] + "... (truncado)"
-        add_log(f"📦 Payload recibido: {payload_str}")
+        add_log(f"  Payload recibido: {payload_str}")
 
         es_loc, en_loc = translator.get_locales(config.site_id)
         if not es_loc or not en_loc:
-            add_log("❌ No se pudieron obtener los locales")
-            send_webhook_log(admin_email, smtp_email, smtp_password, "⚠️ Webhook Fallido - Error de Locales", "\n".join(log_lines))
+            add_log("  No se pudieron obtener los locales")
+            send_webhook_log(admin_email, smtp_email, smtp_password, "  Webhook Fallido - Error de Locales", "\n".join(log_lines))
             return jsonify({"status": "locales error"}), 200
 
         trigger_type = data.get('triggerType')
-        add_log(f"⚡ Trigger Type: {trigger_type}")
+        add_log(f"  Trigger Type: {trigger_type}")
 
-        # 🔥 TODOS LOS TRIGGERS DE CMS SOPORTADOS (ambos formatos: con guión y con guión bajo)
-        # Webflow puede enviar el trigger con guión (-) o con guión bajo (_)
+        # --- CASO 1: TODOS LOS TRIGGERS DE CMS ---
         if trigger_type in [
             'collection-item-created', 'collection_item_created',
             'collection-item-changed', 'collection_item_changed',
@@ -390,18 +404,17 @@ def webflow_webhook():
             'collection-item-unpublished', 'collection_item_unpublished',
             'collection-item-deleted', 'collection_item_deleted'
         ]:
-            # Extraer collectionId e itemId (pueden estar en diferentes lugares)
-            collection_id = data.get('collectionId') or data.get('_cid')
-            # El itemId puede venir en data.get('itemId') o dentro de payload.items[0].id
-            if not collection_id and 'payload' in data and 'items' in data['payload'] and len(data['payload']['items']) > 0:
-                # A veces el payload trae lista de items, tomamos el primero
-                first_item = data['payload']['items'][0]
+            # Extraer IDs contemplando la estructura "payload" de Webflow v2
+            payload_data = data.get('payload', {})
+            collection_id = payload_data.get('collectionId') or data.get('collectionId') or data.get('_cid')
+            item_id = payload_data.get('id') or data.get('itemId') or data.get('_id')
+            
+            if not collection_id and 'items' in payload_data and len(payload_data['items']) > 0:
+                first_item = payload_data['items'][0]
                 collection_id = first_item.get('collectionId')
                 item_id = first_item.get('id')
-            else:
-                item_id = data.get('itemId') or data.get('_id')
 
-            add_log(f"📂 Collection ID: {collection_id}, Item ID: {item_id}")
+            add_log(f"  Collection ID: {collection_id}, Item ID: {item_id}")
 
             if collection_id and item_id:
                 rule = AutoRule.query.filter_by(
@@ -413,71 +426,73 @@ def webflow_webhook():
                 ).first()
 
                 if rule:
-                    add_log(f"✅ Regla encontrada: {rule.target_name} (ID: {rule.id})")
-                    add_log(f"⏳ Esperando 2 segundos para que Webflow procese el cambio...")
+                    add_log(f"  Regla encontrada: {rule.target_name} (ID: {rule.id})")
+                    add_log(f"  Esperando 2 segundos para que Webflow procese el cambio...")
                     time.sleep(2)
-
+                    
                     full_item = translator.get_single_item(collection_id, item_id, es_loc['cmsLocaleId'])
                     if full_item:
                         item_name = full_item.get('fieldData', {}).get('name', 'Sin nombre')
-                        add_log(f"📄 Item obtenido: {item_id} - {item_name}")
-                        add_log(f"🔄 Traduciendo item (force=False, límite de 2)...")
+                        add_log(f"  Item obtenido: {item_id} - {item_name}")
+                        add_log(f"  Traduciendo item (force=False, límite de 2)...")
                         
-                        # 🔥 force=False (por defecto) para que respete el límite de 2
                         success = translator.process_cms_item(collection_id, full_item, en_loc['cmsLocaleId'])
                         if success:
-                            add_log("✅ Item traducido correctamente")
-                            add_log(f"🚀 Publicando sitio...")
+                            add_log("  Item traducido correctamente")
+                            add_log(f"  Publicando sitio...")
                             publish_result = translator.publish_site(config.site_id)
-                            add_log(f"📤 Resultado de publicación: {publish_result}")
+                            add_log(f"  Resultado de publicación: {publish_result}")
                             
                             send_webhook_log(
                                 admin_email, smtp_email, smtp_password,
-                                f"✅ Webhook Exitoso - Item {item_id} traducido",
+                                f"  Webhook Exitoso - Item {item_id} traducido",
                                 "\n".join(log_lines)
                             )
                             
                             return jsonify({
-                                "status": f"✅ Item {item_id} traducido y sitio publicado.",
+                                "status": f"  Item {item_id} traducido y sitio publicado.",
                                 "publish": publish_result
                             }), 200
                         else:
-                            add_log("⚠️ El item no se tradujo (límite alcanzado o sin cambios)")
+                            add_log("  El item no se tradujo (límite alcanzado o sin cambios)")
                             send_webhook_log(
                                 admin_email, smtp_email, smtp_password,
-                                f"ℹ️ Webhook - Item {item_id} no traducido",
+                                f"  Webhook - Item {item_id} no traducido",
                                 "\n".join(log_lines)
                             )
-                            return jsonify({"status": f"⏭️ Item {item_id} no se tradujo (límite alcanzado o sin cambios)"}), 200
+                            return jsonify({"status": f"  Item {item_id} no se tradujo (límite alcanzado o sin cambios)"}), 200
                     else:
-                        add_log(f"❌ Item no encontrado: {item_id}")
+                        add_log(f"  Item no encontrado: {item_id}")
                         send_webhook_log(
                             admin_email, smtp_email, smtp_password,
-                            f"⚠️ Webhook - Item {item_id} no encontrado",
+                            f"  Webhook - Item {item_id} no encontrado",
                             "\n".join(log_lines)
                         )
                         return jsonify({"error": "Item no encontrado"}), 404
                 else:
-                    add_log(f"⏭️ No hay regla activa para collection {collection_id}")
+                    add_log(f"  No hay regla activa para collection {collection_id}")
                     send_webhook_log(
                         admin_email, smtp_email, smtp_password,
-                        f"ℹ️ Webhook Ignorado - Sin regla para collection {collection_id}",
+                        f"  Webhook Ignorado - Sin regla para collection {collection_id}",
                         "\n".join(log_lines)
                     )
-                    return jsonify({"status": f"⏭️ No hay regla activa para collection {collection_id}"}), 200
+                    return jsonify({"status": f"  No hay regla activa para collection {collection_id}"}), 200
             else:
-                add_log(f"⚠️ Faltan collection_id o item_id: collection_id={collection_id}, item_id={item_id}")
+                add_log(f"  Faltan collection_id o item_id: collection_id={collection_id}, item_id={item_id}")
                 send_webhook_log(
                     admin_email, smtp_email, smtp_password,
-                    "⚠️ Webhook Incompleto - Faltan IDs",
+                    "  Webhook Incompleto - Faltan IDs",
                     "\n".join(log_lines)
                 )
                 return jsonify({"status": "Faltan IDs"}), 200
 
-        # --- CASO 2: Eventos de página ---
+        # --- CASO 2: EVENTOS DE PÁGINA ---
         elif trigger_type in ['page-created', 'page_created', 'page-metadata-updated', 'page_metadata_updated', 'page-deleted', 'page_deleted']:
-            page_id = data.get('pageId')
-            add_log(f"📄 Page ID: {page_id}")
+            # Extraer el ID contemplando la estructura "payload" de Webflow v2
+            payload_data = data.get('payload', {})
+            page_id = payload_data.get('pageId') or data.get('pageId')
+            
+            add_log(f"  Page ID: {page_id}")
 
             if page_id:
                 rule = AutoRule.query.filter_by(
@@ -489,57 +504,61 @@ def webflow_webhook():
                 ).first()
 
                 if rule:
-                    add_log(f"✅ Regla encontrada: {rule.target_name} (ID: {rule.id})")
-                    add_log(f"⏳ Esperando 2 segundos para que Webflow procese el cambio...")
+                    add_log(f"  Regla encontrada: {rule.target_name} (ID: {rule.id})")
+                    add_log(f"  Esperando 2 segundos para que Webflow procese el cambio...")
                     time.sleep(2)
-
-                    add_log(f"🔄 Traduciendo página (force=False, límite de 2)...")
+                    
+                    add_log(f"  Traduciendo página (force=False, límite de 2)...")
                     success = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
+                    
                     if success:
-                        add_log("✅ Página traducida correctamente")
-                        add_log(f"🚀 Publicando sitio...")
+                        add_log("  Página traducida correctamente")
+                        add_log(f"  Publicando sitio...")
                         publish_result = translator.publish_site(config.site_id)
-                        add_log(f"📤 Resultado de publicación: {publish_result}")
+                        add_log(f"  Resultado de publicación: {publish_result}")
                         
                         send_webhook_log(
                             admin_email, smtp_email, smtp_password,
-                            f"✅ Webhook Exitoso - Página {page_id} traducida",
+                            f"  Webhook Exitoso - Página {page_id} traducida",
                             "\n".join(log_lines)
                         )
                         
                         return jsonify({
-                            "status": f"✅ Página {page_id} traducida y sitio publicado.",
+                            "status": f"  Página {page_id} traducida y sitio publicado.",
                             "publish": publish_result
                         }), 200
                     else:
-                        add_log("⚠️ La página no se tradujo (límite alcanzado o sin cambios)")
+                        add_log("  La página no se tradujo (límite alcanzado o sin cambios)")
                         send_webhook_log(
                             admin_email, smtp_email, smtp_password,
-                            f"ℹ️ Webhook - Página {page_id} no traducida",
+                            f"  Webhook - Página {page_id} no traducida",
                             "\n".join(log_lines)
                         )
-                        return jsonify({"status": f"⏭️ Página {page_id} no se tradujo (límite alcanzado o sin cambios)"}), 200
+                        return jsonify({"status": f"  Página {page_id} no se tradujo (límite alcanzado o sin cambios)"}), 200
                 else:
-                    add_log(f"⏭️ No hay regla activa para page {page_id}")
+                    add_log(f"  No hay regla activa para page {page_id}")
                     send_webhook_log(
                         admin_email, smtp_email, smtp_password,
-                        f"ℹ️ Webhook Ignorado - Sin regla para page {page_id}",
+                        f"  Webhook Ignorado - Sin regla para page {page_id}",
                         "\n".join(log_lines)
                     )
-                    return jsonify({"status": f"⏭️ No hay regla activa para page {page_id}"}), 200
+                    return jsonify({"status": f"  No hay regla activa para page {page_id}"}), 200
             else:
-                add_log(f"⚠️ Falta page_id")
+                add_log(f"  Falta page_id")
                 send_webhook_log(
                     admin_email, smtp_email, smtp_password,
-                    "⚠️ Webhook Incompleto - Falta page_id",
+                    "  Webhook Incompleto - Falta page_id",
                     "\n".join(log_lines)
                 )
                 return jsonify({"status": "Falta page_id"}), 200
 
-        # --- CASO 3: Publicación de sitio ---
+        # --- CASO 3: PUBLICACIÓN DE SITIO ---
         elif trigger_type == 'site-publish' or trigger_type == 'site_publish':
-            site_id = data.get('siteId')
-            add_log(f"🌐 Site Publish: {site_id}")
+            payload_data = data.get('payload', {})
+            site_id = payload_data.get('siteId') or data.get('siteId')
+            
+            add_log(f"  Site Publish: {site_id}")
+
             if site_id and site_id == config.site_id:
                 page_rules = AutoRule.query.filter_by(
                     target_type='page', 
@@ -549,39 +568,40 @@ def webflow_webhook():
 
                 processed = 0
                 for rule in page_rules:
-                    add_log(f"📄 Procesando regla de páginas: {rule.target_name}")
+                    add_log(f"  Procesando regla de páginas: {rule.target_name}")
                     for page in translator.get_pages(config.site_id):
                         if translator.process_page_dom(page['id'], es_loc['id'], en_loc['id']):
                             processed += 1
-                add_log(f"✅ Site Publish: {processed} páginas procesadas.")
+                
+                add_log(f"  Site Publish: {processed} páginas procesadas.")
                 
                 send_webhook_log(
                     admin_email, smtp_email, smtp_password,
-                    f"✅ Site Publish - {processed} páginas procesadas",
+                    f"  Site Publish - {processed} páginas procesadas",
                     "\n".join(log_lines)
                 )
                 return jsonify({"status": f"Site Publish: {processed} páginas procesadas."}), 200
             else:
-                add_log(f"⏭️ Site Publish ignorado (site_id no coincide)")
+                add_log(f"  Site Publish ignorado (site_id no coincide)")
                 return jsonify({"status": "Site Publish ignorado"}), 200
 
-        # --- CASO 4: Evento no soportado ---
+        # --- CASO 4: EVENTO NO SOPORTADO ---
         else:
-            add_log(f"ℹ️ Trigger '{trigger_type}' no soportado aún")
+            add_log(f"  Trigger '{trigger_type}' no soportado aún")
             send_webhook_log(
                 admin_email, smtp_email, smtp_password,
-                f"ℹ️ Webhook Ignorado - Trigger no soportado: {trigger_type}",
+                f"  Webhook Ignorado - Trigger no soportado: {trigger_type}",
                 "\n".join(log_lines)
             )
             return jsonify({"status": f"Trigger '{trigger_type}' no soportado aún"}), 200
 
     except Exception as e:
-        add_log(f"❌ EXCEPCIÓN: {str(e)}")
+        add_log(f"  EXCEPCIÓN: {str(e)}")
         import traceback
         add_log(traceback.format_exc())
         send_webhook_log(
             admin_email, smtp_email, smtp_password,
-            f"❌ Webhook con Error - Excepción",
+            f"  Webhook con Error - Excepción",
             "\n".join(log_lines)
         )
         return jsonify({"error": str(e)}), 500
