@@ -219,8 +219,6 @@ class TranslatorService:
 
         translated_fields = {}
         for key, value in item['fieldData'].items():
-            # Se eliminó 'name' de la exclusión para que se traduzca el título del ítem.
-            # Esto automáticamente traduce metadescription y meta-title que vienen como string
             if isinstance(value, str) and key not in ['slug', 'color']:
                 es_html = "<" in value and ">" in value
                 tr_val = self.translate_text(value, is_html=es_html)
@@ -260,7 +258,7 @@ class TranslatorService:
         return res.json().get('nodes', [])
 
     def process_page_dom(self, page_id, es_locale_id, en_locale_id, force=False):
-        """Traduce el DOM de una página. force=True ignora el caché y límites."""
+        """Traduce el DOM de una página asegurando la correcta manipulación de HTML."""
         self.escribe_log(f"\n======================================")
         self.escribe_log(f"Iniciando traducción de DOM ID: '{page_id}'")
         self.escribe_log(f"======================================")
@@ -294,16 +292,11 @@ class TranslatorService:
                 original_html = text_obj.get("html") or ""
                 original_text = text_obj.get("text") or ""
                 
+                # Solución: Traducir el HTML íntegro directamente con soporte DeepL tag_handling
                 if original_html.strip():
-                    if original_text.strip() and original_text in original_html:
-                        tr_text = self.translate_text(original_text, is_html=False)
-                        tr_html = original_html.replace(original_text, tr_text)
-                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                        self.escribe_log(f"  Texto optimizado (ahorro DeepL): {original_text[:50]}... -> {tr_text[:50]}...")
-                    else:
-                        tr_html = self.translate_text(original_html, is_html=True)
-                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                        self.escribe_log(f"  HTML complejo traducido directo: {original_html[:50]}... -> {tr_html[:50]}...")
+                    tr_html = self.translate_text(original_html, is_html=True)
+                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                    self.escribe_log(f"  HTML traducido: {original_html[:50]}... -> {tr_html[:50]}...")
                 elif original_text.strip():
                     tr_text = self.translate_text(original_text, is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
@@ -408,7 +401,7 @@ class TranslatorService:
         return res.json().get('nodes', [])
 
     def process_component_dom(self, component_id, es_locale_id, en_locale_id, force=False):
-        """Traduce el DOM de un componente."""
+        """Traduce el DOM de un componente asegurando la correcta manipulación de HTML."""
         self.escribe_log(f"\n======================================")
         self.escribe_log(f"Iniciando traducción de Componente ID: '{component_id}'")
         self.escribe_log(f"======================================")
@@ -435,13 +428,8 @@ class TranslatorService:
                 original_text = text_obj.get("text") or ""
                 
                 if original_html.strip():
-                    if original_text.strip() and original_text in original_html:
-                        tr_text = self.translate_text(original_text, is_html=False)
-                        tr_html = original_html.replace(original_text, tr_text)
-                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                    else:
-                        tr_html = self.translate_text(original_html, is_html=True)
-                        translated_nodes.append({"nodeId": node_id, "text": tr_html})
+                    tr_html = self.translate_text(original_html, is_html=True)
+                    translated_nodes.append({"nodeId": node_id, "text": tr_html})
                 elif original_text.strip():
                     tr_text = self.translate_text(original_text, is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
