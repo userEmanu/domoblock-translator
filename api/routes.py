@@ -6,7 +6,7 @@ import json
 from flask import Blueprint, request, render_template, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 import requests
-from api.models import db, User, Settings, AutoRule
+from api.models import db, User, Settings, AutoRule, TranslationRecord
 from api.services import TranslatorService, send_login_alert, send_webhook_log
 
 main = Blueprint('main', __name__)
@@ -30,7 +30,7 @@ def get_translator():
     return None, None
 
 # ==========================================
-# LOGIN Y DASHBOARD
+# LOGIN, DASHBOARD Y MANTENIMIENTO
 # ==========================================
 @main.route('/login', methods=['GET', 'POST'])
 def login():
@@ -98,6 +98,19 @@ def dashboard():
 
     return render_template('dashboard.html', config=config, usage=usage, current_time=colombia_time.strftime('%Y-%m-%d %I:%M %p'))
 
+@main.route('/reset-history', methods=['POST'])
+@login_required
+def reset_history():
+    """Endpoint para borrar todo el historial de traducciones y reiniciar contadores"""
+    try:
+        num_deleted = db.session.query(TranslationRecord).delete()
+        db.session.commit()
+        flash(f"Historial de caché reiniciado con éxito. Se eliminaron {num_deleted} registros. Todos los ítems están listos para traducirse nuevamente.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al reiniciar el historial: {str(e)}", "danger")
+    return redirect(url_for('main.dashboard'))
+
 # ==========================================
 # RUTAS DE TRADUCCIÓN MANUAL
 # ==========================================
@@ -143,10 +156,14 @@ def manual_translate():
         es_id, en_id = es_loc['id'], en_loc['id']
         if target_id == 'all':
             for page in translator.get_pages(config.site_id):
-                if translator.process_page_dom(page['id'], es_id, en_id, force=True):
+                dom_ok = translator.process_page_dom(page['id'], es_id, en_id, force=True)
+                seo_ok = translator.process_page_metadata(page['id'], es_id, en_id, force=True)
+                if dom_ok or seo_ok:
                     processed += 1
         else:
-            if translator.process_page_dom(target_id, es_id, en_id, force=True):
+            dom_ok = translator.process_page_dom(target_id, es_id, en_id, force=True)
+            seo_ok = translator.process_page_metadata(target_id, es_id, en_id, force=True)
+            if dom_ok or seo_ok:
                 processed += 1
                 
     elif target_type == 'collection':
@@ -293,10 +310,14 @@ def cron_translate():
             es_id, en_id = es_loc['id'], en_loc['id']
             if rule.target_id == 'all':
                 for page in translator.get_pages(config.site_id):
-                    if translator.process_page_dom(page['id'], es_id, en_id):
+                    dom_ok = translator.process_page_dom(page['id'], es_id, en_id)
+                    seo_ok = translator.process_page_metadata(page['id'], es_id, en_id)
+                    if dom_ok or seo_ok:
                         translated_count += 1
             else:
-                if translator.process_page_dom(rule.target_id, es_id, en_id):
+                dom_ok = translator.process_page_dom(rule.target_id, es_id, en_id)
+                seo_ok = translator.process_page_metadata(rule.target_id, es_id, en_id)
+                if dom_ok or seo_ok:
                     translated_count += 1
                     
         elif rule.target_type == 'component':
@@ -508,11 +529,12 @@ def webflow_webhook():
                     add_log(f"  Esperando 2 segundos para que Webflow procese el cambio...")
                     time.sleep(2)
                     
-                    add_log(f"  Traduciendo página (force=False, límite de 3)...")
-                    success = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
+                    add_log(f"  Traduciendo página (DOM y SEO) (límite de 3)...")
+                    success_dom = translator.process_page_dom(page_id, es_loc['id'], en_loc['id'])
+                    success_seo = translator.process_page_metadata(page_id, es_loc['id'], en_loc['id'])
                     
-                    if success:
-                        add_log("  Página traducida correctamente")
+                    if success_dom or success_seo:
+                        add_log("  Página y/o SEO traducido correctamente")
                         add_log(f"  Publicando sitio...")
                         publish_result = translator.publish_site(config.site_id)
                         add_log(f"  Resultado de publicación: {publish_result}")
@@ -528,7 +550,7 @@ def webflow_webhook():
                             "publish": publish_result
                         }), 200
                     else:
-                        add_log("  La página no se tradujo (límite alcanzado o sin cambios)")
+                        add_log("  La página no se tradujo (límite alcanzado o sin cambios en DOM ni SEO)")
                         send_webhook_log(
                             admin_email, smtp_email, smtp_password,
                             f"  Webhook - Página {page_id} no traducida",
@@ -570,7 +592,9 @@ def webflow_webhook():
                 for rule in page_rules:
                     add_log(f"  Procesando regla de páginas: {rule.target_name}")
                     for page in translator.get_pages(config.site_id):
-                        if translator.process_page_dom(page['id'], es_loc['id'], en_loc['id']):
+                        dom_ok = translator.process_page_dom(page['id'], es_loc['id'], en_loc['id'])
+                        seo_ok = translator.process_page_metadata(page['id'], es_loc['id'], en_loc['id'])
+                        if dom_ok or seo_ok:
                             processed += 1
                 
                 add_log(f"  Site Publish: {processed} páginas procesadas.")

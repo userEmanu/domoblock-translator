@@ -271,7 +271,7 @@ class TranslatorService:
             return False
 
         if not self.can_translate(page_id, 'page', nodes, force=force):
-            self.escribe_log(f"  Página {page_id}: Sin cambios o límite alcanzado.")
+            self.escribe_log(f"  Página {page_id}: Sin cambios de estructura o límite alcanzado.")
             return False
 
         try:
@@ -342,6 +342,55 @@ class TranslatorService:
             self.escribe_log(f"  Error al actualizar página {page_id}")
             return False
 
+    def process_page_metadata(self, page_id, es_locale_id, en_locale_id, force=False):
+        """Traduce los campos SEO y el Título de las páginas estáticas."""
+        self.escribe_log(f"\n======================================")
+        self.escribe_log(f"Iniciando traducción de Metadatos/SEO para Página ID: '{page_id}'")
+        self.escribe_log(f"======================================")
+
+        res = requests.get(f"{self.base_url}/pages/{page_id}", headers=self.headers, params={"localeId": es_locale_id})
+        if res.status_code != 200:
+            self.escribe_log(f"  Error obteniendo metadatos de la página {page_id}: {res.text}")
+            return False
+            
+        page_data = res.json()
+        seo = page_data.get('seo', {})
+        openGraph = page_data.get('openGraph', {})
+        title = page_data.get('title', '')
+        
+        # Validación de caché independiente al DOM
+        data_to_hash = {"title": title, "seo": seo, "openGraph": openGraph}
+        if not self.can_translate(f"{page_id}_seo", 'page_seo', data_to_hash, force=force):
+            self.escribe_log(f"  SEO Página {page_id}: Sin cambios en metadatos o límite alcanzado.")
+            return False
+
+        translated_seo = {}
+        translated_og = {}
+        translated_title = self.translate_text(title) if title else ""
+        
+        if seo:
+            if seo.get('title'): translated_seo['title'] = self.translate_text(seo['title'])
+            if seo.get('description'): translated_seo['description'] = self.translate_text(seo['description'])
+            
+        if openGraph:
+            if openGraph.get('title'): translated_og['title'] = self.translate_text(openGraph['title'])
+            if openGraph.get('description'): translated_og['description'] = self.translate_text(openGraph['description'])
+
+        payload = {}
+        if translated_title: payload['title'] = translated_title
+        if translated_seo: payload['seo'] = translated_seo
+        if translated_og: payload['openGraph'] = translated_og
+
+        if payload:
+            update_res = requests.patch(f"{self.base_url}/pages/{page_id}", headers=self.headers, params={"localeId": en_locale_id}, json=payload)
+            if update_res.status_code in [200, 202, 204]:
+                self.escribe_log(f"  Metadatos SEO de Página {page_id} traducidos y actualizados.")
+                return True
+            else:
+                self.escribe_log(f"  Error actualizando SEO de página {page_id}: {update_res.text}")
+                return False
+        return False
+
     def update_page_dom(self, page_id, locale_id, nodes):
         url = f"{self.base_url}/pages/{page_id}/dom"
         res = requests.post(url, headers=self.headers, params={"localeId": locale_id}, json={"nodes": nodes})
@@ -390,15 +439,12 @@ class TranslatorService:
                         tr_text = self.translate_text(original_text, is_html=False)
                         tr_html = original_html.replace(original_text, tr_text)
                         translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                        self.escribe_log(f"  Texto optimizado (ahorro DeepL): {original_text[:50]}... -> {tr_text[:50]}...")
                     else:
                         tr_html = self.translate_text(original_html, is_html=True)
                         translated_nodes.append({"nodeId": node_id, "text": tr_html})
-                        self.escribe_log(f"  HTML complejo traducido directo: {original_html[:50]}... -> {tr_html[:50]}...")
                 elif original_text.strip():
                     tr_text = self.translate_text(original_text, is_html=False)
                     translated_nodes.append({"nodeId": node_id, "text": tr_text})
-                    self.escribe_log(f"  Texto plano traducido: {original_text[:50]}... -> {tr_text[:50]}...")
 
             elif node_type == "submit-button":
                 if "value" in node:

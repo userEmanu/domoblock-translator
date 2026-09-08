@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+
 {% block content %}
 <h2><i class="fas fa-tachometer-alt"></i> Dashboard y Configuración</h2>
 
@@ -20,8 +21,8 @@
     <input type="text" name="site_id" value="{{ config.site_id or '' }}" required>
     
     <hr style="border: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
-    <h4><i class="fas fa-envelope"></i> Alertas de Seguridad por Correo (SMTP)</h4>
 
+    <h4><i class="fas fa-envelope"></i> Alertas de Seguridad por Correo (SMTP)</h4>
     <label>Correo Electrónico a Notificar:</label>
     <input type="email" name="admin_email" value="{{ config.admin_email or 'emanueel031@gmail.com' }}" required>
 
@@ -33,4 +34,14 @@
 
     <button type="submit" style="margin-top: 15px;"><i class="fas fa-save"></i> Guardar Toda la Configuración</button>
 </form>
+
+<hr style="border: 1px solid rgba(255,255,255,0.1); margin: 30px 0;">
+
+<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 10px; padding: 20px;">
+    <h4 style="color: #fca5a5; margin-top: 0;"><i class="fas fa-history"></i> Limpieza y Mantenimiento de Caché</h4>
+    <p class="text-sm" style="color: #f87171;">Si alguna página o ítem alcanzó el límite máximo de traducciones (3 veces) y necesitas forzar una nueva traducción automática desde cero a través del Webhook, utiliza este botón para limpiar el historial de seguridad.</p>
+    <form action="{{ url_for('main.reset_history') }}" method="POST" onsubmit="return confirm('¿Estás absolutamente seguro de que deseas borrar el historial? Todos los elementos volverán a tener 0 traducciones en la base de datos de seguridad.');">
+        <button type="submit" class="btn btn-danger" style="width: 100%; margin-top: 10px;"><i class="fas fa-trash-alt"></i> Eliminar todo el Historial de Traducciones</button>
+    </form>
+</div>
 {% endblock %}
